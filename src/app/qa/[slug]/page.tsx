@@ -31,7 +31,7 @@ export default async function QAPostPage({
 }: {
   params: { slug: string };
 }) {
-  const post = await prisma.qaPost.findUnique({
+  const post = await prisma.qAPost.findUnique({
     where: { slug: params.slug },
     include: { business: true },
   });
