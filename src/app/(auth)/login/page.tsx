@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 
-export default function LoginPage() {
+// Inner component — uses useSearchParams(), MUST be inside <Suspense>
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const callbackUrl = params.get("callbackUrl") ?? "/dashboard";
@@ -173,5 +174,20 @@ export default function LoginPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+// Outer page — no hooks, just Suspense boundary
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-96 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

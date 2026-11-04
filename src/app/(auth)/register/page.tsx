@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -19,7 +19,7 @@ function passwordStrength(pw: string): { score: number; label: string; color: st
   return { score: 4, label: "Strong", color: "bg-emerald-500" };
 }
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const plan = params.get("plan") ?? "free";
@@ -59,7 +59,6 @@ export default function RegisterPage() {
         setError(data.error ?? "Could not create account.");
         return;
       }
-      // Auto sign-in after successful registration
       const signin = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
@@ -253,5 +252,19 @@ export default function RegisterPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-96 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <RegisterForm />
+    </Suspense>
   );
 }
