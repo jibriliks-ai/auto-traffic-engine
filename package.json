@@ -2,6 +2,11 @@
   "name": "auto-traffic-engine",
   "version": "1.0.0",
   "private": true,
+  "description": "Auto Traffic Engine — SEO audit, Q&A finder, classified ads, indexer, video creator, social poster",
+  "engines": {
+    "node": "20.x",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
