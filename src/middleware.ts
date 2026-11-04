@@ -5,7 +5,7 @@ const INDEXNOW_KEY = process.env.INDEXNOW_KEY ?? "";
 
 export default withAuth(
   function middleware(req) {
-    // Serve /{INDEXNOW_KEY}.txt directly from middleware (no DB needed)
+    // Serve /{INDEXNOW_KEY}.txt directly from middleware
     const { pathname } = req.nextUrl;
     if (INDEXNOW_KEY && pathname === `/${INDEXNOW_KEY}.txt`) {
       return new NextResponse(INDEXNOW_KEY, {
@@ -24,11 +24,13 @@ export default withAuth(
           pathname.startsWith("/login") ||
           pathname.startsWith("/register") ||
           pathname.startsWith("/api/auth") ||
-          pathname.startsWith("/api/billing/paystack/webhook") ||
+          pathname.startsWith("/api/billing/flutterwave/webhook") ||
           pathname.startsWith("/r/") ||
           pathname.startsWith("/qa/") ||
           pathname === `/${INDEXNOW_KEY}.txt`
-        ) return true;
+        ) {
+          return true;
+        }
         return !!token;
       },
     },

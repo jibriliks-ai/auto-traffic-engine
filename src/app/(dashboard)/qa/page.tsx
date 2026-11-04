@@ -1,9 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { Search, MessageSquare, ExternalLink, Copy, Loader2, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Search,
+  MessageSquare,
+  ExternalLink,
+  Copy,
+  Loader2,
+  Sparkles,
+  Send,
+} from "lucide-react";
 
-const COUNTRIES = ["All", "USA", "UK", "Canada", "India", "Nigeria", "South Africa", "Germany", "Australia"];
+const COUNTRIES = [
+  "All",
+  "USA",
+  "UK",
+  "Canada",
+  "India",
+  "Nigeria",
+  "South Africa",
+  "Germany",
+  "Australia",
+];
 
 type QA = {
   id: string;
@@ -24,6 +42,23 @@ export default function QAPage() {
   const [draft, setDraft] = useState("");
   const [activeQuestion, setActiveQuestion] = useState<QA | null>(null);
   const [copied, setCopied] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<{ url: string } | null>(null);
+
+  // Prefill keyword from the user's active business
+  useEffect(() => {
+    fetch("/api/businesses")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.activeBusinessId) return;
+        const b = d.businesses?.find((x: any) => x.id === d.activeBusinessId);
+        if (b?.keywords) {
+          const first = b.keywords.split(",")[0].trim();
+          setKeyword((prev) => prev || first);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   async function search() {
     if (!keyword.trim()) return;
@@ -46,6 +81,7 @@ export default function QAPage() {
     setDrafting(q.id);
     setActiveQuestion(q);
     setDraft("");
+    setPublished(null);
     try {
       const res = await fetch("/api/qa/draft", {
         method: "POST",
@@ -65,11 +101,38 @@ export default function QAPage() {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  async function publishToClone() {
+    if (!activeQuestion || !draft) return;
+    setPublishing(true);
+    setPublished(null);
+    try {
+      const res = await fetch("/api/qa/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: activeQuestion.title,
+          answer: draft,
+          sourceUrl: activeQuestion.url,
+          sourcePlatform: activeQuestion.platform,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Publish failed");
+      setPublished({ url: data.url });
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Q&A Finder</h1>
-        <p className="mt-1 text-muted-foreground">Find live questions across 6 networks and reply with AI drafts that convert.</p>
+        <h1 className="text-3xl font-semibold tracking-tight">Q&amp;A Finder</h1>
+        <p className="mt-1 text-muted-foreground">
+          Find live questions across 9 networks and reply with AI drafts that convert.
+        </p>
       </div>
 
       {/* Search bar */}
@@ -90,38 +153,47 @@ export default function QAPage() {
             onChange={(e) => setCountry(e.target.value)}
             className="h-11 rounded-lg border border-border bg-background px-4 text-sm focus:border-primary focus:outline-none"
           >
-            {COUNTRIES.map((c) => <option key={c}>{c}</option>)}
+            {COUNTRIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
           </select>
           <button
             onClick={search}
             disabled={loading || !keyword.trim()}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
             {loading ? "Searching…" : "Search"}
           </button>
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results + Draft panel */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-xl border border-border/60 bg-card lg:col-span-2">
           <div className="border-b border-border/60 p-5">
             <div className="flex items-center justify-between">
               <div className="font-semibold">Results</div>
-              <div className="text-sm text-muted-foreground">{results.length} questions</div>
+              <div className="text-sm text-muted-foreground">
+                {results.length} questions
+              </div>
             </div>
           </div>
           <div className="divide-y divide-border/60">
             {results.length === 0 && !loading && (
               <div className="p-12 text-center text-sm text-muted-foreground">
-                Enter a keyword to search across Reddit, Lemmy, Mbin, PieFed, StackExchange, and Nairaland.
+                Enter a keyword to search across Reddit, Lemmy, Mbin, PieFed, StackExchange,
+                Hacker News, Dev.to, and Discourse.
               </div>
             )}
             {loading && (
               <div className="p-12 text-center text-sm text-muted-foreground">
                 <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-primary" />
-                Searching 6 sources in parallel…
+                Searching 9 sources in parallel…
               </div>
             )}
             {results.map((q) => (
@@ -154,7 +226,11 @@ export default function QAPage() {
                     disabled={drafting === q.id}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
                   >
-                    {drafting === q.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                    {drafting === q.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3 w-3" />
+                    )}
                     Draft
                   </button>
                 </div>
@@ -168,7 +244,9 @@ export default function QAPage() {
           <div className="border-b border-border/60 p-5">
             <div className="font-semibold">AI Draft</div>
             <div className="mt-0.5 truncate text-xs text-muted-foreground">
-              {activeQuestion ? activeQuestion.title : "Select a question to draft a reply"}
+              {activeQuestion
+                ? activeQuestion.title
+                : "Select a question to draft a reply"}
             </div>
           </div>
           <div className="p-4">
@@ -190,13 +268,37 @@ export default function QAPage() {
               </div>
             )}
             {draft && (
-              <button
-                onClick={copyDraft}
-                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                {copied ? "Copied!" : "Copy draft"}
-              </button>
+              <div className="mt-3 space-y-2">
+                <button
+                  onClick={copyDraft}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border py-2 text-sm font-medium hover:bg-muted"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  {copied ? "Copied!" : "Copy draft"}
+                </button>
+                <button
+                  onClick={publishToClone}
+                  disabled={publishing}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  {publishing ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Send className="h-3.5 w-3.5" />
+                  )}
+                  {publishing ? "Publishing…" : "Publish to Q&A Clone"}
+                </button>
+                {published && (
+                  <a
+                    href={published.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg bg-emerald-500/10 px-3 py-2 text-center text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                  >
+                    ✓ Published — view public page ↗
+                  </a>
+                )}
+              </div>
             )}
           </div>
         </div>
