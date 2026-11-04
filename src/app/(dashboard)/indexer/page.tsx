@@ -40,12 +40,21 @@ export default function IndexerPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  const [statusError, setStatusError] = useState("");
+
   async function loadStatus() {
     setLoading(true);
+    setStatusError("");
     try {
       const res = await fetch("/api/indexer/status");
       const data = await res.json();
-      if (res.ok) setStatus(data);
+      if (!res.ok) {
+        setStatusError(data.error ?? `HTTP ${res.status}`);
+      } else {
+        setStatus(data);
+      }
+    } catch (e: any) {
+      setStatusError(e.message ?? "Network error");
     } finally {
       setLoading(false);
     }
@@ -112,8 +121,23 @@ export default function IndexerPage() {
     );
   }
 
-  if (!status) {
-    return <div className="text-sm text-muted-foreground">Failed to load status.</div>;
+   if (!status) {
+    return (
+      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-6">
+        <div className="text-sm font-medium text-rose-600 dark:text-rose-400">
+          Could not load indexer status
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          {statusError || "Unknown error — check browser DevTools Network tab"}
+        </div>
+        <button
+          onClick={loadStatus}
+          className="mt-4 rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted"
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   const { usage } = status;

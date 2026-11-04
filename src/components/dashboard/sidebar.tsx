@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, BarChart3, MessageSquare, Megaphone,
-  Globe2, Video, Share2, Shield, HelpCircle, Sparkles, Crown,
+  Globe2, Video, Share2, Shield, HelpCircle, Sparkles, Crown, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
+  { href: "/businesses", label: "Businesses", icon: Building2 },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/seo", label: "SEO Audit", icon: BarChart3 },
   { href: "/qa", label: "Q&A Finder", icon: MessageSquare },
@@ -103,7 +104,7 @@ export function Sidebar({ user }: { user: any }) {
             href="/billing"
             className="mt-3 block rounded-lg bg-primary py-2 text-center text-xs font-medium text-primary-foreground hover:opacity-90"
           >
-            Upgrade — $29/mo
+            Upgrade — ₦25,000/mo
           </Link>
         </div>
       )}

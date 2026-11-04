@@ -3,6 +3,7 @@
 import { signOut } from "next-auth/react";
 import { useTheme } from "next-themes";
 import { LogOut, Moon, Sun, Menu } from "lucide-react";
+import { BusinessSelector } from "./business-selector";
 
 export function Topbar({ user }: { user: any }) {
   const { theme, setTheme } = useTheme();
@@ -13,7 +14,9 @@ export function Topbar({ user }: { user: any }) {
           <Menu className="h-5 w-5" />
         </button>
         <div>
-          <div className="text-sm font-medium">Welcome back, {user.name?.split(" ")[0] ?? "there"}</div>
+          <div className="text-sm font-medium">
+            Welcome back, {user.name?.split(" ")[0] ?? "there"}
+          </div>
           <div className="text-xs text-muted-foreground">
             {user.plan === "premium" ? (
               <span className="text-primary">Premium plan</span>
@@ -25,6 +28,7 @@ export function Topbar({ user }: { user: any }) {
       </div>
 
       <div className="flex items-center gap-2">
+        <BusinessSelector />
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="grid h-9 w-9 place-items-center rounded-lg border border-border hover:bg-muted"
