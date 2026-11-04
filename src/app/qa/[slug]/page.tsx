@@ -10,8 +10,8 @@ export async function generateMetadata({
 }: {
   params: { slug: string };
 }) {
-  const post = await prisma.qaPost.findUnique({
-    where: { slug: params.slug },
+  const post = await prisma.qAPost.findUnique({
+  where: { slug: params.slug },
     include: { business: true },
   });
   if (!post) return { title: "Question not found" };

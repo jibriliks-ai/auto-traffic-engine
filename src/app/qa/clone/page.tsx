@@ -12,8 +12,8 @@ export const metadata = {
 };
 
 export default async function QAFeedPage() {
-  const posts = await prisma.qaPost.findMany({
-    where: { status: "published" },
+  const posts = await prisma.qAPost.findMany({
+  where: { status: "published" },
     orderBy: { createdAt: "desc" },
     take: 50,
     include: { business: true },

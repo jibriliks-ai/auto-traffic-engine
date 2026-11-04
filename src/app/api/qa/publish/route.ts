@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   const slug = slugify(title);
 
   try {
-    const post = await prisma.qaPost.create({
+    const post = await prisma.qAPost.create({
       data: {
         slug,
         userId,
