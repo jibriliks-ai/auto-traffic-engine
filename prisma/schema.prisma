@@ -8,18 +8,23 @@ datasource db {
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
+// ============================================================
+// AUTH
+// ============================================================
+
 model User {
-  id             String         @id @default(cuid())
-  name           String?
-  email          String         @unique
-  emailVerified  DateTime?
-  image          String?
-  passwordHash   String?
-  role           String         @default("user")
-  plan           String         @default("free")
-  planExpiresAt  DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String    @id @default(cuid())
+  name             String?
+  email            String    @unique
+  emailVerified    DateTime?
+  image            String?
+  passwordHash     String?
+  role             String    @default("user")     // user | admin
+  plan             String    @default("free")     // free | premium
+  planExpiresAt    DateTime?
+  activeBusinessId String?                        // current business for all modules
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   accounts       Account[]
   sessions       Session[]
@@ -27,7 +32,8 @@ model User {
   submissions    Submission[]
   videos         Video[]
   socialAccounts SocialAccount[]
-  payments      Payment[]
+  qaPosts        QAPost[]
+  payments       Payment[]
 }
 
 model Account {
@@ -64,6 +70,10 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// ============================================================
+// BUSINESS (every module targets the active business)
+// ============================================================
+
 model Business {
   id          String       @id @default(cuid())
   userId      String
@@ -74,15 +84,20 @@ model Business {
   createdAt   DateTime     @default(now())
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   submissions Submission[]
+  qaPosts     QAPost[]
 
   @@index([userId])
 }
+
+// ============================================================
+// MODULE TRACKING
+// ============================================================
 
 model Submission {
   id           String    @id @default(cuid())
   userId       String
   businessId   String?
-  type         String
+  type         String    // qa | classified | indexer | social | video
   platform     String
   url          String
   submittedUrl String
@@ -115,11 +130,11 @@ model Video {
 model SocialAccount {
   id           String    @id @default(cuid())
   userId       String
-  provider     String
+  provider     String    // facebook | twitter
   accountId    String
   accountName  String?
   accessToken  String
-  pages        String?
+  pages        String?   // JSON string (portable across SQLite/Postgres)
   dailyCount   Int       @default(0)
   lastPostDate DateTime?
   createdAt    DateTime  @default(now())
@@ -127,13 +142,41 @@ model SocialAccount {
 
   @@unique([userId, provider, accountId])
 }
+
+// ============================================================
+// Q&A CLONE (public Reddit/Lemmy-style feed with FAQ schema)
+// ============================================================
+
+model QAPost {
+  id             String    @id @default(cuid())
+  slug           String    @unique
+  userId         String
+  businessId     String?
+  title          String
+  body           String
+  sourceUrl      String
+  sourcePlatform String
+  status         String    @default("published")
+  views          Int       @default(0)
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business       Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId])
+}
+
+// ============================================================
+// BILLING (Flutterwave)
+// ============================================================
+
 model Payment {
   id        String    @id @default(cuid())
   userId    String
   reference String    @unique
   amount    Int
   currency  String    @default("NGN")
-  status    String    @default("pending")
+  status    String    @default("pending")   // pending | success | failed
   plan      String    @default("premium")
   channel   String?
   createdAt DateTime  @default(now())
