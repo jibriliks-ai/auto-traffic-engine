@@ -3,8 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
-  Megaphone, Loader2, CheckCircle2, Copy, ExternalLink,
-  Sparkles, ChevronDown, X, Building2, Send, Check,
+  Loader2, CheckCircle2, Copy, ExternalLink,
+  Sparkles, ChevronDown, X, Building2, Send, Check, Search,
 } from "lucide-react";
 
 type Site = { name: string; url: string; category: string; da: number };
