@@ -6,42 +6,80 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 /**
- * Free translation via Google's public endpoint.
- * No API key, no package, works from any IP.
+ * Provider 1: SimplyTranslate AI
+ * Free, no API key, 100 req/min, 5000 chars/req.
+ * Docs: https://simplytranslate.ai/api-docs
  */
-async function googleTranslate(text: string, target: string): Promise<string> {
-  // Google's endpoint handles up to ~5000 chars via GET.
-  // Our texts are short (titles ≤ 100 chars, bodies ≤ 1500 chars).
-  const url =
-    "https://translate.googleapis.com/translate_a/single" +
-    `?client=gtx&sl=auto&tl=${encodeURIComponent(target)}&dt=t&q=${encodeURIComponent(text)}`;
-
-  const res = await fetch(url, {
+async function translateWithSimplyTranslate(
+  text: string,
+  target: string
+): Promise<string> {
+  const res = await fetch("https://api.simplytranslate.ai/translate", {
+    method: "POST",
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "AutoTrafficEngine/1.0",
     },
+    body: JSON.stringify({
+      text,
+      from: "auto", // auto-detect source language
+      to: target,
+    }),
     signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
-    throw new Error(`Google Translate returned HTTP ${res.status}`);
+    const errText = await res.text().catch(() => "");
+    throw new Error(
+      `SimplyTranslate HTTP ${res.status}: ${errText.slice(0, 200)}`
+    );
   }
 
   const data = await res.json();
-  // Response shape: [[[translated, original, null, null, ...], ...], null, "en", ...]
-  if (!Array.isArray(data) || !Array.isArray(data[0])) {
-    throw new Error("Unexpected translation response shape");
+  if (!data?.result || typeof data.result !== "string") {
+    throw new Error("SimplyTranslate returned an unexpected response shape.");
   }
 
-  const translated = (data[0] as any[])
-    .filter((chunk) => Array.isArray(chunk) && typeof chunk[0] === "string")
-    .map((chunk) => chunk[0])
-    .join("");
+  return data.result;
+}
 
-  if (!translated.trim()) {
-    throw new Error("Translation returned empty result");
+/**
+ * Provider 2 (Fallback): MyMemory
+ * Free, no API key, 5000 chars/day anonymous (50k with email).
+ * Docs: https://mymemory.translated.net/doc/spec.php
+ */
+async function translateWithMyMemory(
+  text: string,
+  target: string
+): Promise<string> {
+  // Optional: pass your email as `de` to get 50k chars/day instead of 5k
+  const email = process.env.MYMEMORY_EMAIL ?? "";
+  const langPair = `auto|${target}`;
+  const url =
+    `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+      text
+    )}&langpair=${encodeURIComponent(langPair)}` +
+    (email ? `&de=${encodeURIComponent(email)}` : "");
+
+  const res = await fetch(url, {
+    headers: { "User-Agent": "AutoTrafficEngine/1.0" },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!res.ok) {
+    throw new Error(`MyMemory HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  const translated = data?.responseData?.translatedText;
+
+  if (!translated || typeof translated !== "string") {
+    throw new Error("MyMemory returned an unexpected response shape.");
+  }
+
+  // MyMemory sometimes returns "MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY"
+  if (translated.toUpperCase().includes("MYMEMORY WARNING")) {
+    throw new Error("MyMemory daily limit reached.");
   }
 
   return translated;
@@ -61,7 +99,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Text is required." }, { status: 400 });
   }
   if (!to) {
-    return NextResponse.json({ error: "Target language is required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Target language is required." },
+      { status: 400 }
+    );
   }
   if (text.length > 4500) {
     return NextResponse.json(
@@ -70,14 +111,45 @@ export async function POST(req: Request) {
     );
   }
 
+  let translated: string | null = null;
+  let providerUsed = "";
+  const errors: string[] = [];
+
+  // Try Provider 1: SimplyTranslate AI
   try {
-    const translated = await googleTranslate(text, to);
-    return NextResponse.json({ translated, target: to });
+    translated = await translateWithSimplyTranslate(text, to);
+    providerUsed = "SimplyTranslate";
   } catch (e: any) {
-    console.error("[translate] error:", e);
+    errors.push(`SimplyTranslate: ${e.message}`);
+    console.warn(`[translate] SimplyTranslate failed: ${e.message}`);
+  }
+
+  // Fallback to Provider 2: MyMemory
+  if (!translated) {
+    try {
+      translated = await translateWithMyMemory(text, to);
+      providerUsed = "MyMemory";
+    } catch (e: any) {
+      errors.push(`MyMemory: ${e.message}`);
+      console.warn(`[translate] MyMemory failed: ${e.message}`);
+    }
+  }
+
+  if (!translated) {
+    console.error("[translate] All providers failed:", errors);
     return NextResponse.json(
-      { error: `Translation failed: ${e.message ?? "unknown"}` },
+      {
+        error: `All translation providers failed. Try again in a moment.`,
+        details: errors,
+      },
       { status: 502 }
     );
   }
+
+  console.log(`[translate] Translated to ${to} via ${providerUsed}`);
+  return NextResponse.json({
+    translated,
+    target: to,
+    provider: providerUsed,
+  });
 }
