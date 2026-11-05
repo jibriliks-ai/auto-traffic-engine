@@ -14,9 +14,15 @@ export function Topbar({
 }) {
   const { theme, setTheme } = useTheme();
 
+  async function handleSignOut() {
+    // Step 1: invalidate session on the server (no redirect — we control it)
+    await signOut({ redirect: false });
+    // Step 2: hard reload — clears all client state reliably
+    window.location.href = "/";
+  }
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-2 border-b border-border/60 bg-background/80 px-3 backdrop-blur-xl sm:px-4 lg:px-6">
-      {/* Left */}
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           onClick={onOpenMenu}
@@ -33,15 +39,18 @@ export function Topbar({
             {user.plan === "premium" ? (
               <span className="text-primary">Premium plan</span>
             ) : (
-              <>Free plan · <a href="/billing" className="underline">upgrade</a></>
+              <>
+                Free plan ·{" "}
+                <a href="/billing" className="underline">
+                  upgrade
+                </a>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Right */}
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-        {/* Hide business selector below md (accessible via sidebar → Businesses) */}
         <div className="hidden md:block">
           <BusinessSelector />
         </div>
@@ -57,7 +66,7 @@ export function Topbar({
           {user.email?.[0]?.toUpperCase()}
         </div>
         <button
-          onClick={() => signOut({ callbackUrl: "/" })}
+          onClick={handleSignOut}
           className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
           aria-label="Sign out"
         >

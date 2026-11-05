@@ -7,7 +7,11 @@ import { prisma } from "./prisma";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
-  session: { strategy: "jwt" },
+   session: {
+    strategy: "jwt",
+    maxAge: 24 * 60 * 60,    // absolute max: 24h
+    updateAge: 60 * 60,       // refresh token every hour when active
+  },
   pages: { signIn: "/login" },
   providers: [
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
