@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isEnvAdmin } from "@/lib/admin";
 
 export const runtime = "nodejs";
 
@@ -11,9 +12,11 @@ async function requireAdmin() {
   const userId = (session.user as any).id;
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { role: true, email: true },
   });
-  if (user?.role !== "admin") return { error: "Forbidden", status: 403 };
+  const isAdmin =
+    user?.role === "admin" || isEnvAdmin(user?.email ?? session.user.email);
+  if (!isAdmin) return { error: "Forbidden", status: 403 };
   return { userId };
 }
 
@@ -74,7 +77,6 @@ export async function GET() {
     }),
   ]);
 
-  // Build last-30-days chart
   const days: Record<string, number> = {};
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
@@ -92,7 +94,7 @@ export async function GET() {
       premiumUsers,
       submissions: totalSubmissions,
       clicks: totalClicksAgg._sum.clicks ?? 0,
-      revenueNgn: (totalRevenueAgg._sum.amount ?? 0),
+      revenueNgn: totalRevenueAgg._sum.amount ?? 0,
     },
     byType: submissionsByType.map((s) => ({
       type: s.type,

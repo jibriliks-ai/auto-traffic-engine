@@ -34,6 +34,7 @@ model User {
   socialAccounts SocialAccount[]
   qaPosts        QAPost[]
   payments       Payment[]
+  passwordResetTokens PasswordResetToken[]
 }
 
 model Account {
@@ -185,4 +186,16 @@ model Payment {
 
   @@index([userId])
   @@index([status])
+}
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique
+  expires   DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expires])
 }

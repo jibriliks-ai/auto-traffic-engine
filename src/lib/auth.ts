@@ -4,13 +4,14 @@ import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { isEnvAdmin } from "./admin";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
-   session: {
+  session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60,    // absolute max: 24h
-    updateAge: 60 * 60,       // refresh token every hour when active
+    maxAge: 24 * 60 * 60,   // absolute max: 24h
+    updateAge: 60 * 60,     // refresh token every hour when active
   },
   pages: { signIn: "/login" },
   providers: [
@@ -51,9 +52,15 @@ export const authOptions: NextAuthOptions = {
       if (token.uid) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.uid as string },
-          select: { role: true, plan: true },
+          select: { role: true, plan: true, email: true },
         });
-        token.role = dbUser?.role ?? "user";
+
+        // Admin source 1: ADMIN_EMAILS env var (wins)
+        // Admin source 2: User.role === "admin" in DB
+        const email = dbUser?.email ?? (token.email as string) ?? null;
+        const envAdmin = isEnvAdmin(email);
+
+        token.role = envAdmin ? "admin" : (dbUser?.role ?? "user");
         token.plan = dbUser?.plan ?? "free";
       }
       return token;

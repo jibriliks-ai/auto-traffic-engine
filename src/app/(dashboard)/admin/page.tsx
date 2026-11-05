@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { isEnvAdmin } from "@/lib/admin";
 import { formatNumber, timeAgo } from "@/lib/utils";
 import {
   Users, Send, MousePointerClick, Coins, Crown, TrendingUp,
-  Building2, Globe2, Shield, AlertTriangle,
+  Globe2, Shield, AlertTriangle,
 } from "lucide-react";
 import { AdminChart } from "@/components/admin/admin-chart";
 
@@ -82,22 +83,37 @@ async function getAdminData() {
 export default async function AdminPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
+
+  // Check admin access — env var wins over DB
   const user = await prisma.user.findUnique({
     where: { id: (session.user as any).id },
-    select: { role: true },
+    select: { role: true, email: true },
   });
-  if (user?.role !== "admin") {
+  const isAdmin =
+    user?.role === "admin" || isEnvAdmin(user?.email ?? session.user.email);
+
+  if (!isAdmin) {
     return (
       <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-6">
         <div className="flex items-center gap-2 text-sm font-medium text-rose-600 dark:text-rose-400">
           <AlertTriangle className="h-4 w-4" /> Admin access required
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your account doesn't have admin privileges. To promote yourself:
+          Your account doesn't have admin privileges. To gain access:
         </p>
-        <pre className="mt-2 overflow-auto rounded bg-muted p-3 text-xs">
-          UPDATE "User" SET role='admin' WHERE email='{session.user.email}';
-        </pre>
+        <div className="mt-3 space-y-2">
+          <div className="text-xs font-medium">Option A — Env var (recommended)</div>
+          <pre className="overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap">
+{`Render Dashboard → your service → Environment
+Add: ADMIN_EMAILS=${session.user.email}
+Then redeploy.`}
+          </pre>
+
+          <div className="mt-3 text-xs font-medium">Option B — SQL</div>
+          <pre className="overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap">
+{`UPDATE "User" SET role='admin' WHERE email='${session.user.email}';`}
+          </pre>
+        </div>
         <Link href="/dashboard" className="mt-4 inline-block text-sm text-primary hover:underline">
           ← Back to dashboard
         </Link>
@@ -122,12 +138,12 @@ export default async function AdminPage() {
     { label: "Tracked clicks", value: formatNumber(data.totals.clicks), icon: MousePointerClick },
     {
       label: "Revenue",
-      value: `₦${formatNumber(data.totals.revenueNgn)}`,
+      value: `$${formatNumber(data.totals.revenueNgn)}`,
       icon: Coins,
     },
     {
       label: "MRR (est.)",
-      value: `₦${formatNumber(data.totals.premiumUsers * 25000)}`,
+      value: `$${formatNumber(data.totals.premiumUsers * 35)}`,
       icon: TrendingUp,
     },
   ];
@@ -239,7 +255,7 @@ export default async function AdminPage() {
             <div key={p.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
               <div className="min-w-0 flex-1 truncate">{p.user.email}</div>
               <div className="font-medium tabular-nums">
-                ₦{p.amount.toLocaleString()}
+                {p.currency === "USD" ? "$" : "₦"}{p.amount.toLocaleString()}
               </div>
               <span
                 className={`rounded-full px-2 py-0.5 text-xs ${
