@@ -109,14 +109,14 @@ function NavContent({
             <Crown className="h-4 w-4 text-primary" /> Go Premium
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Unlock unlimited indexer, videos, and social posts.
+            Unlock unlimited Q&A, classifieds, and social posts.
           </p>
           <Link
             href="/billing"
             onClick={onLinkClick}
             className="mt-3 block rounded-lg bg-primary py-2 text-center text-xs font-medium text-primary-foreground hover:opacity-90"
           >
-            Upgrade — ₦25,000/mo
+            Upgrade — $35/mo
           </Link>
         </div>
       )}
@@ -137,12 +137,10 @@ export function Sidebar({
 
   return (
     <>
-      {/* Desktop sidebar — hidden on mobile */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border/60 bg-background lg:flex">
         <NavContent user={user} pathname={pathname} />
       </aside>
 
-      {/* Mobile drawer — hidden on desktop */}
       <div
         className={cn(
           "fixed inset-0 z-50 lg:hidden",
@@ -150,7 +148,6 @@ export function Sidebar({
         )}
         aria-hidden={!mobileOpen}
       >
-        {/* Backdrop */}
         <div
           onClick={onMobileClose}
           className={cn(
@@ -158,14 +155,12 @@ export function Sidebar({
             mobileOpen ? "opacity-100" : "opacity-0"
           )}
         />
-        {/* Drawer panel */}
         <aside
           className={cn(
             "absolute left-0 top-0 flex h-full w-72 max-w-[80vw] flex-col border-r border-border bg-background shadow-2xl transition-transform duration-200 ease-out",
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
-          {/* Close button */}
           <button
             onClick={onMobileClose}
             className="absolute right-2 top-3 z-10 grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-muted"

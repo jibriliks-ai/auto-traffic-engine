@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { timeAgo } from "@/lib/utils";
 
-const PREMIUM_PRICE_DISPLAY = "₦25,000";
+const PREMIUM_PRICE_DISPLAY = "$35";
 
 type Payment = {
   id: string;
@@ -28,23 +28,21 @@ export default function BillingPage() {
   const { data: session, update: updateSession } = useSession();
 
   const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+  const [error, setError] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [verifySuccess, setVerifySuccess] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(true);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
 
   const plan = (session?.user as any)?.plan ?? "free";
   const isPremium = plan === "premium";
 
-  // Flutterwave redirects back with ?status=successful&tx_ref=...&transaction_id=...
   useEffect(() => {
     const transactionId = params.get("transaction_id");
     const txRef = params.get("tx_ref");
     const status = params.get("status");
 
-    // Only verify if we actually came back from a Flutterwave redirect
     if (!transactionId && !txRef) return;
     if (status && status !== "successful" && status !== "completed") {
       setError("Payment was not completed.");
@@ -83,7 +81,7 @@ export default function BillingPage() {
       .finally(() => setLoadingPayments(false));
   }, [verifySuccess]);
 
-   function addDebug(msg: string) {
+  function addDebug(msg: string) {
     setDebugInfo((prev) => [...prev, msg]);
   }
 
@@ -91,7 +89,6 @@ export default function BillingPage() {
     setError("");
     setDebugInfo([]);
     setLoading(true);
-
     addDebug("1. Sending POST /api/billing/checkout...");
 
     try {
@@ -103,7 +100,7 @@ export default function BillingPage() {
         data = await res.json();
       } catch {
         throw new Error(
-          `Server returned HTTP ${res.status} but not JSON. Check the terminal running npm run dev.`
+          `Server returned HTTP ${res.status} but not JSON. Check Render logs.`
         );
       }
 
@@ -122,18 +119,13 @@ export default function BillingPage() {
 
       try {
         window.location.assign(data.checkout_url);
-      } catch (e: any) {
-        addDebug(`window.location.assign failed: ${e.message}`);
-        const win = window.open(data.checkout_url, "_blank");
-        if (!win) {
-          throw new Error(`Popup blocked. Manually open: ${data.checkout_url}`);
-        }
+      } catch {
+        window.location.href = data.checkout_url;
       }
     } catch (e: any) {
       addDebug(`ERROR: ${e.message}`);
       setError(e.message);
-    } finally {
-      setTimeout(() => setLoading(false), 3000);
+      setLoading(false);
     }
   }
 
@@ -161,7 +153,7 @@ export default function BillingPage() {
           <div>
             <div className="text-sm font-medium">Premium activated!</div>
             <div className="text-xs text-muted-foreground">
-              Unlimited indexer, videos, and social posts unlocked.
+              Unlimited Q&A, classifieds, indexer, videos, and social posts unlocked.
             </div>
           </div>
         </div>
@@ -169,9 +161,14 @@ export default function BillingPage() {
       {error && (
         <div className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
           <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium">Something went wrong</div>
-            <div className="text-xs text-muted-foreground">{error}</div>
+            <div className="break-words text-xs text-muted-foreground">{error}</div>
+            {debugInfo.length > 0 && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted/50 p-2 text-[10px] whitespace-pre-wrap break-all">
+                {debugInfo.join("\n")}
+              </pre>
+            )}
           </div>
         </div>
       )}
@@ -209,16 +206,17 @@ export default function BillingPage() {
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">Current</span>
             )}
           </div>
-          <div className="mt-2 text-4xl font-semibold">₦0</div>
+          <div className="mt-2 text-4xl font-semibold">$0</div>
           <p className="mt-1 text-sm text-muted-foreground">Perfect for trying it out.</p>
           <ul className="mt-6 space-y-3 text-sm">
             {[
               "Unlimited SEO audits",
-              "Unlimited Q&A search",
-              "Unlimited classifieds",
-              "2 indexer submissions / day",
+              "5 Q&A interactions per day",
+              "5 classifieds per day",
+              "2 indexer submissions per day",
+              "1 business",
               "1 video total",
-              "5 social posts / platform / day",
+              "2 social posts per day",
             ].map((f) => (
               <li key={f} className="flex gap-2">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -245,11 +243,13 @@ export default function BillingPage() {
           <ul className="mt-6 space-y-3 text-sm">
             {[
               "Everything in Free",
+              "Unlimited Q&A",
+              "Unlimited classifieds",
               "Unlimited indexer submissions",
               "Unlimited videos",
               "Unlimited social posts",
+              "Unlimited businesses",
               "Priority AI generation",
-              "Lead webhook + CRM sync",
             ].map((f) => (
               <li key={f} className="flex gap-2">
                 <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -257,22 +257,15 @@ export default function BillingPage() {
               </li>
             ))}
           </ul>
-                {!isPremium ? (
-            <>
-              <button
-                onClick={upgrade}
-                disabled={loading}
-                className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {loading ? "Redirecting to Flutterwave…" : "Upgrade now"}
-              </button>
-              {debugInfo.length > 0 && (
-                <pre className="mt-3 max-h-56 overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-all text-muted-foreground">
-                  {debugInfo.join("\n")}
-                </pre>
-              )}
-            </>
+          {!isPremium ? (
+            <button
+              onClick={upgrade}
+              disabled={loading}
+              className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {loading ? "Redirecting to Flutterwave…" : `Upgrade now — ${PREMIUM_PRICE_DISPLAY}/mo`}
+            </button>
           ) : (
             <div className="mt-8 rounded-lg bg-muted/50 py-3 text-center text-sm text-muted-foreground">
               You're on the best plan 🎉

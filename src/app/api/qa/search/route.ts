@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { checkQALimit, recordQAActivity } from "@/lib/limits";
 
 type QA = {
   id: string;
@@ -165,7 +166,6 @@ async function discourse(q: string, country: string): Promise<QA[]> {
   }));
 }
 
-// Everyday-life source: DuckDuckGo Instant Answers
 async function duckDuckGo(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`
@@ -216,7 +216,6 @@ async function duckDuckGo(q: string, country: string): Promise<QA[]> {
   return results;
 }
 
-// Everyday-life source: Quora via Quetre (public instance, no key)
 async function quoraViaQuetre(q: string, country: string): Promise<QA[]> {
   const instance = "https://quetre.iket.me";
   const data = await safeFetch(
@@ -236,17 +235,14 @@ async function quoraViaQuetre(q: string, country: string): Promise<QA[]> {
   }));
 }
 
-// Strict relevance — drops anything whose title/snippet doesn't contain the keyword
 function matchesKeyword(qa: QA, keyword: string): boolean {
   const kw = keyword.toLowerCase().trim();
   if (!kw) return false;
 
   const haystack = `${(qa.title ?? "").toLowerCase()} ${(qa.snippet ?? "").toLowerCase()}`;
 
-  // Exact phrase
   if (haystack.includes(kw)) return true;
 
-  // All significant words must appear (order doesn't matter)
   const words = kw.split(/\s+/).filter((w) => w.length > 2);
   if (words.length === 0) return true;
   return words.every((w) => haystack.includes(w));
@@ -268,10 +264,25 @@ export async function POST(req: Request) {
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = (session.user as any).id;
+  const plan = (session.user as any).plan ?? "free";
 
   const { keyword, country = "All" } = await req.json();
   if (!keyword?.trim()) {
     return NextResponse.json({ error: "Keyword required" }, { status: 400 });
+  }
+
+  // Free tier: 5 Q&A interactions per day
+  const limit = await checkQALimit(userId, plan);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      {
+        error: `You've used your ${limit.limit} free Q&A interactions for today. Upgrade to Premium for unlimited.`,
+        usage: limit,
+        upgradeRequired: true,
+      },
+      { status: 429 }
+    );
   }
 
   const raw = await Promise.all([
@@ -292,9 +303,14 @@ export async function POST(req: Request) {
   const filtered = dedupe(all).filter((qa) => matchesKeyword(qa, keyword));
   const sorted = filtered.sort((a, b) => b.score - a.score).slice(0, 60);
 
+  // Record activity only on successful search
+  await recordQAActivity(userId, "search", keyword);
+  const updatedLimit = await checkQALimit(userId, plan);
+
   return NextResponse.json({
     results: sorted,
     count: sorted.length,
     filteredOut: all.length - filtered.length,
+    usage: updatedLimit,
   });
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, MessageSquare, Video, Globe2, Sparkles, CheckCircle2 } from "lucide-react";
+import { ArrowRight, BarChart3, MessageSquare, Video, Globe2, Sparkles, CheckCircle2, Megaphone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 
 async function getStats() {
@@ -17,8 +17,8 @@ async function getStats() {
 
 const modules = [
   { icon: BarChart3, title: "SEO Audit + AI Fix", desc: "Score any URL in seconds, then let AI rewrite your page for the keywords that matter." },
-  { icon: MessageSquare, title: "Q&A Finder", desc: "Surface live questions across 6 networks and reply with AI drafts that convert." },
-  { icon: Globe2, title: "Classifieds Engine", desc: "65 countries × 10 sites — unique AI-generated ad copy for each, ready to post." },
+  { icon: MessageSquare, title: "Q&A Finder", desc: "Surface live questions across 11 networks and reply with AI drafts that convert." },
+  { icon: Megaphone, title: "Classifieds Engine", desc: "65 countries × 10 sites — unique AI-generated ad copy for each, ready to post in any language." },
   { icon: Sparkles, title: "Instant Indexer", desc: "Push URLs to IndexNow (Bing, Yandex, Naver) and Google Indexing API in one click." },
   { icon: Video, title: "15-20s Video Creator", desc: "Turn a product image into a ready-to-post video with AI voiceover." },
   { icon: ArrowRight, title: "Social Poster", desc: "Publish to Facebook Pages and X, with click tracking and lead webhooks." },
@@ -93,7 +93,7 @@ export default async function LandingPage() {
       <section id="features" className="mx-auto max-w-7xl px-6 py-24">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-semibold md:text-4xl">Everything you need to grow</h2>
-          <p className="mt-4 text-muted-foreground">Seven modules. One login. Zero busywork.</p>
+          <p className="mt-4 text-muted-foreground">Six modules. One login. Zero busywork.</p>
         </div>
         <div className="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {modules.map((m) => (
@@ -116,34 +116,68 @@ export default async function LandingPage() {
             <p className="mt-4 text-muted-foreground">Start free. Upgrade when traffic flows.</p>
           </div>
           <div className="mt-14 grid gap-6 md:grid-cols-2">
+            {/* FREE */}
             <div className="rounded-2xl border border-border bg-card p-8">
               <div className="text-sm font-medium text-muted-foreground">Free</div>
-              <div className="mt-2 text-4xl font-semibold">$0</div>
+              <div className="mt-2 text-4xl font-semibold">
+                $0<span className="text-lg font-normal text-muted-foreground">/mo</span>
+              </div>
               <p className="mt-2 text-sm text-muted-foreground">Perfect for testing the waters.</p>
               <ul className="mt-6 space-y-3 text-sm">
-                {["Unlimited SEO audits", "Unlimited Q&A search", "Unlimited classifieds", "2 indexer submissions / day", "1 video total", "5 social posts / platform / day"].map((f) => (
-                  <li key={f} className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-primary" />{f}</li>
+                {[
+                  "Unlimited SEO audits",
+                  "5 Q&A interactions per day",
+                  "5 classifieds per day",
+                  "2 indexer submissions per day",
+                  "1 business",
+                  "1 video total",
+                  "2 social posts per day",
+                ].map((f) => (
+                  <li key={f} className="flex gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span>{f}</span>
+                  </li>
                 ))}
               </ul>
-              <Link href="/register" className="mt-8 block w-full rounded-lg border border-border py-3 text-center font-medium hover:bg-muted">
+              <Link
+                href="/register"
+                className="mt-8 block w-full rounded-lg border border-border py-3 text-center font-medium hover:bg-muted"
+              >
                 Start free
               </Link>
             </div>
+
+            {/* PREMIUM */}
             <div className="relative rounded-2xl border-2 border-primary bg-card p-8 shadow-xl">
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
                 Most popular
               </div>
               <div className="text-sm font-medium text-primary">Premium</div>
               <div className="mt-2 text-4xl font-semibold">
-                $29<span className="text-lg font-normal text-muted-foreground">/mo</span>
+                $35<span className="text-lg font-normal text-muted-foreground">/mo</span>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">For serious operators.</p>
               <ul className="mt-6 space-y-3 text-sm">
-                {["Everything in Free", "Unlimited indexer", "Unlimited videos", "Unlimited social posts", "Priority AI", "Lead webhook + CRM sync"].map((f) => (
-                  <li key={f} className="flex gap-2"><CheckCircle2 className="h-4 w-4 text-primary" />{f}</li>
+                {[
+                  "Everything in Free",
+                  "Unlimited Q&A interactions",
+                  "Unlimited classifieds",
+                  "Unlimited indexer submissions",
+                  "Unlimited videos",
+                  "Unlimited social posts",
+                  "Unlimited businesses",
+                  "Priority AI generation",
+                ].map((f) => (
+                  <li key={f} className="flex gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                    <span>{f}</span>
+                  </li>
                 ))}
               </ul>
-              <Link href="/register?plan=premium" className="mt-8 block w-full rounded-lg bg-primary py-3 text-center font-medium text-primary-foreground hover:opacity-90">
+              <Link
+                href="/register?plan=premium"
+                className="mt-8 block w-full rounded-lg bg-primary py-3 text-center font-medium text-primary-foreground hover:opacity-90"
+              >
                 Go Premium
               </Link>
             </div>

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import {
   Search, BookOpen, Building2, BarChart3, MessageSquare, Globe2,
-  Megaphone, CreditCard, ChevronRight, X,
+  Megaphone, CreditCard, ChevronRight, X, Shield,
 } from "lucide-react";
 
 type Article = {
@@ -21,6 +21,7 @@ const CATEGORIES = [
   { id: "classifieds", label: "Classifieds", icon: Megaphone },
   { id: "indexer", label: "Indexer", icon: Globe2 },
   { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "admin", label: "Admin", icon: Shield },
 ];
 
 const ARTICLES: Article[] = [
@@ -59,21 +60,82 @@ Or click **Manage businesses** in the dropdown to edit/delete.`,
     title: "What does Free plan include?",
     content: `**Free plan limits:**
 - 1 business
+- 5 Q&A interactions per day (searches + drafts combined)
 - 2 indexer submissions per day
 - 1 video total
-- 5 social posts per platform per day
+- 2 social posts per day (across all channels)
 - Unlimited SEO audits
-- Unlimited Q&A searches
 - Unlimited classifieds generation
 
-**Premium plan (₦25,000/mo):**
+**Premium plan ($35/mo):**
 - Unlimited businesses
+- Unlimited Q&A
+- Unlimited classifieds
 - Unlimited indexer
 - Unlimited videos
 - Unlimited social posts
 - Priority AI
 
 Upgrade from **/billing**. Test card: 5531 8866 5214 2950 · CVV 564 · exp 09/32 · PIN 3310 · OTP 12345.`,
+  },
+  {
+    id: "become-admin",
+    category: "admin",
+    title: "How to become an admin",
+    content: `Admin status is stored as a "role" field on your user record. All new users are role="user" by default.
+
+To promote yourself to admin:
+
+1. Open your Neon Console (console.neon.tech)
+2. Select your project → click "SQL Editor" in the left sidebar
+3. Run this query (replace with YOUR email):
+
+   UPDATE "User" SET role = 'admin' WHERE email = 'your-email@example.com';
+
+4. You should see "UPDATE 1" in the result
+5. Sign out of the Auto Traffic Engine app
+6. Sign back in — the Admin link now appears in the sidebar
+
+**Important:** the role is cached in your login token. You MUST sign out and sign back in to see the change.
+
+To demote yourself:
+   UPDATE "User" SET role = 'user' WHERE email = 'your-email@example.com';
+
+The Admin panel is at /admin and shows:
+- Total users + premium conversion rate
+- Total submissions + clicks
+- Revenue (total + estimated MRR)
+- 30-day submission chart
+- Submissions broken down by module
+- Top countries
+- Recent submissions and payments
+
+**Safety note:** Only promote accounts you control. Admin panel shows all users' emails and payment history.`,
+  },
+  {
+    id: "admin-panel-tour",
+    category: "admin",
+    title: "What's inside the Admin panel",
+    content: `After promoting yourself to admin, /admin shows:
+
+**Top stat cards:**
+- Total users (all signups)
+- Premium users + conversion %
+- Total submissions (across all modules)
+- Tracked clicks (from /r/ redirects)
+- Revenue (total ₦ or $ from all successful payments)
+- MRR (estimated monthly recurring revenue)
+
+**Charts:**
+- Submissions per day for the last 30 days
+- Submissions broken down by module (SEO, Q&A, Classifieds, Indexer, Social, Video)
+- Top countries by submission count
+
+**Recent activity:**
+- Last 15 submissions (type, platform, user email, timestamp)
+- Last 10 payments (amount, status, user email, timestamp)
+
+The panel is read-only for now — no delete/edit actions. Future versions may add moderation tools.`,
   },
   {
     id: "add-business",
@@ -145,6 +207,8 @@ Requires an AI key in Render env — set either **OPENAI_API_KEY** or **DEEPSEEK
 
 **Strict relevance:** only results whose title OR body contains your keyword (exact phrase or all words) are returned. If you search "email marketing for small business", results missing any of those words are filtered out.
 
+**Free plan: 5 Q&A interactions per day** — searches and drafts combined. Premium: unlimited.
+
 If a source is rate-limited or offline, the other 10 still fill the table.`,
   },
   {
@@ -158,7 +222,29 @@ The draft opens in an editable textarea. You can:
 - **Copy** — paste into the original platform
 - **Publish to Q&A Clone** — adds it to your public feed at /qa/clone
 
-Each published post gets a unique URL with FAQPage + Article JSON-LD schema, making it Google-friendly.`,
+Each published post gets a unique URL with FAQPage + Article JSON-LD schema, making it Google-friendly.
+
+**Each draft counts against your 5/day limit.** The usage bar at the top of /qa shows remaining interactions.`,
+  },
+  {
+    id: "qa-usage-limit",
+    category: "qa",
+    title: "Q&A daily limit — how it works",
+    content: `Free users get **5 Q&A interactions per day**. This includes:
+- 1 for each search
+- 1 for each AI draft
+
+The counter resets at midnight (server time). The usage bar at the top of /qa shows:
+- X / 5 used
+- Remaining count
+- Colour (green → amber near limit → red at limit)
+
+When you hit the limit:
+- Search and Draft buttons become disabled
+- A red banner appears with "Upgrade for unlimited"
+- Click the banner to go to /billing
+
+Premium users see no usage bar — they have unlimited interactions.`,
   },
   {
     id: "classifieds-how",
@@ -206,16 +292,23 @@ Works on your public domain — localhost will return 403 because the key file i
   {
     id: "billing-upgrade",
     category: "billing",
-    title: "Upgrade to Premium",
+    title: "Upgrade to Premium — $35/mo",
     content: `1. Go to **/billing**
-2. Click **Upgrade now**
+2. Click **Upgrade now — $35/mo**
 3. You're redirected to Flutterwave's secure checkout
 4. Pay with card, bank transfer, or USSD
 5. Return to /billing → Premium activates instantly
 
 Test card (sandbox): 5531 8866 5214 2950 · CVV 564 · exp 09/32 · PIN 3310 · OTP 12345
 
-Premium renews monthly. Cancel by contacting support — no automatic renewal.`,
+Premium renews monthly. Cancel by contacting support — no automatic renewal.
+
+**What you get immediately:**
+- 5/day Q&A limit removed
+- 1-business limit removed
+- 2/day social limit removed
+- 2/day indexer limit removed
+- 1-video limit removed`,
   },
   {
     id: "billing-failed",

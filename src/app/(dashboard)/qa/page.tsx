@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   Search, MessageSquare, ExternalLink, Copy, Loader2, Sparkles, Send,
+  Crown, AlertTriangle,
 } from "lucide-react";
 
 const COUNTRIES = [
-  "All", "USA", "UK", "Canada", "India", "Nigeria", "South Africa", "Germany", "Australia",
+  "All", "USA", "UK", "Canada", "India", "Nigeria",
+  "South Africa", "Germany", "Australia",
 ];
 
 type QA = {
@@ -16,7 +19,14 @@ type QA = {
   url: string;
   score: number;
   country: string;
-  body?: string;
+  snippet?: string;
+};
+
+type Usage = {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  isPremium: boolean;
 };
 
 export default function QAPage() {
@@ -30,8 +40,11 @@ export default function QAPage() {
   const [copied, setCopied] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<{ url: string } | null>(null);
+  const [error, setError] = useState("");
+  const [usage, setUsage] = useState<Usage | null>(null);
 
   useEffect(() => {
+    // Prefill from business
     fetch("/api/businesses")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -43,12 +56,19 @@ export default function QAPage() {
         }
       })
       .catch(() => {});
+
+    // Load usage
+    fetch("/api/qa/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setUsage(d))
+      .catch(() => {});
   }, []);
 
   async function search() {
     if (!keyword.trim()) return;
     setLoading(true);
     setResults([]);
+    setError("");
     try {
       const res = await fetch("/api/qa/search", {
         method: "POST",
@@ -56,7 +76,14 @@ export default function QAPage() {
         body: JSON.stringify({ keyword, country }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 429 && data.usage) setUsage(data.usage);
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
       setResults(data.results ?? []);
+      if (data.usage) setUsage(data.usage);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
@@ -67,6 +94,7 @@ export default function QAPage() {
     setActiveQuestion(q);
     setDraft("");
     setPublished(null);
+    setError("");
     try {
       const res = await fetch("/api/qa/draft", {
         method: "POST",
@@ -74,7 +102,14 @@ export default function QAPage() {
         body: JSON.stringify({ question: q.title, platform: q.platform, url: q.url }),
       });
       const data = await res.json();
-      setDraft(data.draft ?? data.error ?? "");
+      if (!res.ok) {
+        if (res.status === 429 && data.usage) setUsage(data.usage);
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setDraft(data.draft ?? "");
+      if (data.usage) setUsage(data.usage);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setDrafting(null);
     }
@@ -105,20 +140,97 @@ export default function QAPage() {
       if (!res.ok) throw new Error(data.error ?? "Publish failed");
       setPublished({ url: data.url });
     } catch (e: any) {
-      alert(e.message);
+      setError(e.message);
     } finally {
       setPublishing(false);
     }
   }
+
+  const atLimit = usage && !usage.isPremium && usage.remaining === 0;
+  const nearLimit =
+    usage && !usage.isPremium && usage.remaining !== null && usage.remaining <= 2 && usage.remaining > 0;
 
   return (
     <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Q&amp;A Finder</h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-          Find live questions across 9 networks and reply with AI drafts that convert.
+          Find live questions across 11 networks and reply with AI drafts that convert.
         </p>
       </div>
+
+      {/* Usage bar */}
+      {usage && !usage.isPremium && (
+        <div
+          className={`rounded-xl border p-4 ${
+            atLimit
+              ? "border-rose-500/40 bg-rose-500/5"
+              : nearLimit
+              ? "border-amber-500/40 bg-amber-500/5"
+              : "border-border/60 bg-card"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-2 text-sm font-medium">
+                  <span>{usage.used} / {usage.limit} Q&amp;A interactions today</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({usage.remaining} remaining)
+                  </span>
+                </div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={`h-full ${
+                      atLimit ? "bg-rose-500" : nearLimit ? "bg-amber-500" : "bg-primary"
+                    }`}
+                    style={{
+                      width: `${
+                        usage.limit ? Math.min(100, (usage.used / usage.limit) * 100) : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+            {atLimit && (
+              <Link
+                href="/billing"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+              >
+                <Crown className="h-3 w-3" /> Upgrade for unlimited
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Limit-reached banner */}
+      {atLimit && (
+        <div className="rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-purple-500/10 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Crown className="h-4 w-4 text-primary" />
+              You've reached your daily Q&amp;A limit
+            </div>
+            <Link
+              href="/billing"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+            >
+              Upgrade to Premium — $35/mo
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="break-words">{error}</span>
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="rounded-xl border border-border/60 bg-card p-4 sm:p-6">
@@ -129,7 +241,7 @@ export default function QAPage() {
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && search()}
-              placeholder="e.g. best email marketing"
+              placeholder="e.g. best email marketing for small business"
               className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-4 text-sm focus:border-primary focus:outline-none"
             />
           </div>
@@ -145,7 +257,7 @@ export default function QAPage() {
             </select>
             <button
               onClick={search}
-              disabled={loading || !keyword.trim()}
+              disabled={loading || !keyword.trim() || !!atLimit}
               className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 md:flex-none md:px-6"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
@@ -155,9 +267,8 @@ export default function QAPage() {
         </div>
       </div>
 
-      {/* Results + Draft */}
+      {/* Results + draft panel */}
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
-        {/* Results */}
         <div className="rounded-xl border border-border/60 bg-card lg:col-span-2">
           <div className="border-b border-border/60 p-4 sm:p-5">
             <div className="flex items-center justify-between">
@@ -168,14 +279,13 @@ export default function QAPage() {
           <div className="divide-y divide-border/60">
             {results.length === 0 && !loading && (
               <div className="p-8 text-center text-sm text-muted-foreground sm:p-12">
-                Enter a keyword to search across Reddit, Lemmy, Mbin, PieFed, StackExchange,
-                Hacker News, Dev.to, and Discourse.
+                Enter a keyword to search across 11 platforms.
               </div>
             )}
             {loading && (
               <div className="p-8 text-center text-sm text-muted-foreground sm:p-12">
                 <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-primary" />
-                Searching 9 sources in parallel…
+                Searching 11 sources in parallel…
               </div>
             )}
             {results.map((q) => (
@@ -184,9 +294,7 @@ export default function QAPage() {
                   {q.platform.slice(0, 2)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="line-clamp-2 text-sm font-medium sm:line-clamp-1">
-                    {q.title}
-                  </div>
+                  <div className="line-clamp-2 text-sm font-medium sm:line-clamp-1">{q.title}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
                     <span>{q.platform}</span>
                     <span>·</span>
@@ -207,7 +315,7 @@ export default function QAPage() {
                   </a>
                   <button
                     onClick={() => draftReply(q)}
-                    disabled={drafting === q.id}
+                    disabled={drafting === q.id || !!atLimit}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-2 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50 sm:px-3"
                   >
                     {drafting === q.id ? (
@@ -223,7 +331,6 @@ export default function QAPage() {
           </div>
         </div>
 
-        {/* Draft panel */}
         <div className="rounded-xl border border-border/60 bg-card">
           <div className="border-b border-border/60 p-4 sm:p-5">
             <div className="font-semibold">AI Draft</div>
