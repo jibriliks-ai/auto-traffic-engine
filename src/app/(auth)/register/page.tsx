@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, CheckCircle2, UserPlus, ExternalLink } from "lucide-react";
 
 function passwordStrength(pw: string): { score: number; label: string; color: string } {
   let score = 0;
@@ -19,12 +19,52 @@ function passwordStrength(pw: string): { score: number; label: string; color: st
   return { score: 4, label: "Strong", color: "bg-emerald-500" };
 }
 
+function IframeRegisterPrompt() {
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setUrl(window.location.href);
+  }, []);
+
+  return (
+    <div className="space-y-6 text-center">
+      <Link href="/" className="mx-auto flex items-center justify-center gap-2 font-semibold">
+        <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <UserPlus className="h-5 w-5" />
+        </div>
+        Auto Traffic Engine
+      </Link>
+
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          For your security, registration opens in a new tab.
+        </p>
+      </div>
+
+      <button
+        onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+      >
+        <ExternalLink className="h-4 w-4" />
+        Create account in new tab
+      </button>
+
+      <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+        After creating your account, close the new tab and <strong>refresh this page</strong> —
+        you'll be signed in here too.
+      </div>
+    </div>
+  );
+}
+
 function RegisterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const plan = params.get("plan") ?? "free";
   const callbackUrl = "/dashboard";
 
+  const [isInIframe, setIsInIframe] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,6 +73,12 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.self !== window.top) {
+      setIsInIframe(true);
+    }
+  }, []);
 
   const strength = passwordStrength(password);
 
@@ -83,6 +129,10 @@ function RegisterForm() {
   }
 
   const googleEnabled = process.env.NEXT_PUBLIC_GOOGLE_ENABLED === "true";
+
+  if (isInIframe) {
+    return <IframeRegisterPrompt />;
+  }
 
   return (
     <div className="space-y-6">
@@ -213,14 +263,9 @@ function RegisterForm() {
           />
           <span className="text-muted-foreground">
             I agree to the{" "}
-            <Link href="/terms" className="text-foreground underline">
-              Terms
-            </Link>{" "}
+            <Link href="/terms" className="text-foreground underline">Terms</Link>{" "}
             and{" "}
-            <Link href="/privacy" className="text-foreground underline">
-              Privacy Policy
-            </Link>
-            .
+            <Link href="/privacy" className="text-foreground underline">Privacy Policy</Link>.
           </span>
         </label>
 

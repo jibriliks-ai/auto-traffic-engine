@@ -1,10 +1,60 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
-import { Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, CheckCircle2, Lock, ExternalLink } from "lucide-react";
+
+// Shown when the login page is rendered inside an iframe (e.g., blog widget).
+// Iframe authentication is unreliable due to browser third-party cookie blocking,
+// so we redirect users to open the login page in a top-level tab.
+function IframeSignInPrompt() {
+  const [url, setUrl] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setUrl(window.location.href);
+    }
+  }, []);
+
+  function openInNewTab() {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="space-y-6 text-center">
+      <Link href="/" className="mx-auto flex items-center justify-center gap-2 font-semibold">
+        <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground">
+          <Lock className="h-5 w-5" />
+        </div>
+        Auto Traffic Engine
+      </Link>
+
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Sign in to continue</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          For your security, sign-in opens in a new tab. Some browsers block
+          authentication inside embedded apps.
+        </p>
+      </div>
+
+      <button
+        onClick={openInNewTab}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-medium text-primary-foreground hover:opacity-90"
+      >
+        <ExternalLink className="h-4 w-4" />
+        Sign in in new tab
+      </button>
+
+      <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+        After signing in on the new tab, close it and <strong>refresh this page</strong> — you'll
+        be signed in here too.
+      </div>
+    </div>
+  );
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -13,12 +63,20 @@ function LoginForm() {
   const justReset = params.get("reset") === "1";
   const justExpired = params.get("expired") === "1";
 
+  const [isInIframe, setIsInIframe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Detect iframe on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.self !== window.top) {
+      setIsInIframe(true);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,6 +107,11 @@ function LoginForm() {
   }
 
   const googleEnabled = process.env.NEXT_PUBLIC_GOOGLE_ENABLED === "true";
+
+  // If inside an iframe → show the "open in new tab" prompt
+  if (isInIframe) {
+    return <IframeSignInPrompt />;
+  }
 
   return (
     <div className="space-y-6">
@@ -133,10 +196,7 @@ function LoginForm() {
             <label htmlFor="password" className="block text-sm font-medium">
               Password
             </label>
-            <Link
-              href="/forgot-password"
-              className="text-xs text-primary hover:underline"
-            >
+            <Link href="/forgot-password" className="text-xs text-primary hover:underline">
               Forgot password?
             </Link>
           </div>
