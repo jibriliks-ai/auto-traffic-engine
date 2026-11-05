@@ -9,10 +9,10 @@ type QA = {
   url: string;
   score: number;
   country: string;
+  snippet?: string;
 };
 
-const UA =
-  "AutoTrafficEngine/1.0 (+https://auto-traffic-engine.onrender.com)";
+const UA = "AutoTrafficEngine/1.0 (+https://auto-traffic-engine.onrender.com)";
 
 async function safeFetch(url: string, init?: RequestInit) {
   try {
@@ -36,7 +36,6 @@ async function safeFetch(url: string, init?: RequestInit) {
   }
 }
 
-// ---------- 1. Reddit ----------
 async function reddit(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://www.reddit.com/search.json?q=${encodeURIComponent(q)}&sort=new&limit=20`
@@ -49,10 +48,10 @@ async function reddit(q: string, country: string): Promise<QA[]> {
     url: `https://reddit.com${c.data.permalink}`,
     score: c.data.score ?? 0,
     country,
+    snippet: c.data.selftext?.slice(0, 200),
   }));
 }
 
-// ---------- 2 & 6. Lemmy (world + ml) ----------
 async function lemmy(host: string, q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `${host}/api/v3/search?q=${encodeURIComponent(q)}&type_=Posts&limit=20`
@@ -65,10 +64,10 @@ async function lemmy(host: string, q: string, country: string): Promise<QA[]> {
     url: p.post.url ?? `${host}/post/${p.post.id}`,
     score: p.counts?.score ?? 0,
     country,
+    snippet: p.post.body?.slice(0, 200),
   }));
 }
 
-// ---------- 3. Mbin ----------
 async function mbin(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://fedia.io/api/v1/search?q=${encodeURIComponent(q)}`
@@ -83,10 +82,10 @@ async function mbin(q: string, country: string): Promise<QA[]> {
       url: i.url ?? `https://fedia.io/m/${i.id}`,
       score: i.score ?? 0,
       country,
+      snippet: i.body?.slice(0, 200),
     }));
 }
 
-// ---------- 4. PieFed ----------
 async function piefed(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://piefed.social/api/v1/search?q=${encodeURIComponent(q)}`
@@ -99,15 +98,15 @@ async function piefed(q: string, country: string): Promise<QA[]> {
     url: i.url ?? i.ap_id ?? "https://piefed.social",
     score: i.score ?? 0,
     country,
+    snippet: i.body?.slice(0, 200),
   }));
 }
 
-// ---------- 5. StackExchange ----------
 async function stackexchange(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
-    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=activity&q=${encodeURIComponent(
+    `https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=${encodeURIComponent(
       q
-    )}&site=stackoverflow`
+    )}&title=${encodeURIComponent(q)}&body=${encodeURIComponent(q)}&site=stackoverflow`
   );
   return (data?.items ?? []).map((i: any) => ({
     id: `se-${i.question_id}`,
@@ -119,7 +118,6 @@ async function stackexchange(q: string, country: string): Promise<QA[]> {
   }));
 }
 
-// ---------- 7. Hacker News (Algolia) ----------
 async function hackerNews(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q)}&tags=story&hitsPerPage=20`
@@ -131,10 +129,10 @@ async function hackerNews(q: string, country: string): Promise<QA[]> {
     url: h.url ?? `https://news.ycombinator.com/item?id=${h.objectID}`,
     score: h.points ?? 0,
     country,
+    snippet: h.story_text?.slice(0, 200),
   }));
 }
 
-// ---------- 8. Dev.to ----------
 async function devTo(q: string, country: string): Promise<QA[]> {
   const tag = q.toLowerCase().replace(/[^a-z0-9]/g, "");
   const data = await safeFetch(
@@ -148,10 +146,10 @@ async function devTo(q: string, country: string): Promise<QA[]> {
     url: a.url,
     score: (a.public_reactions_count ?? 0) + (a.comments_count ?? 0),
     country,
+    snippet: a.description?.slice(0, 200),
   }));
 }
 
-// ---------- 9. Discourse (meta.discourse.org) ----------
 async function discourse(q: string, country: string): Promise<QA[]> {
   const data = await safeFetch(
     `https://meta.discourse.org/search.json?q=${encodeURIComponent(q)}`
@@ -167,7 +165,93 @@ async function discourse(q: string, country: string): Promise<QA[]> {
   }));
 }
 
-// ---------- Dedupe ----------
+// Everyday-life source: DuckDuckGo Instant Answers
+async function duckDuckGo(q: string, country: string): Promise<QA[]> {
+  const data = await safeFetch(
+    `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`
+  );
+  if (!data) return [];
+
+  const results: QA[] = [];
+
+  if (data.AbstractText) {
+    results.push({
+      id: `ddg-abstract-${Date.now()}`,
+      platform: "DuckDuckGo",
+      title: data.Heading ?? q,
+      url: data.AbstractURL ?? `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+      score: 80,
+      country,
+      snippet: data.AbstractText?.slice(0, 300),
+    });
+  }
+
+  if (data.Answer) {
+    results.push({
+      id: `ddg-answer-${Date.now()}`,
+      platform: "DuckDuckGo",
+      title: `${q} — answer`,
+      url: `https://duckduckgo.com/?q=${encodeURIComponent(q)}`,
+      score: 95,
+      country,
+      snippet: data.Answer?.slice(0, 300),
+    });
+  }
+
+  for (const topic of data.RelatedTopics ?? []) {
+    if (topic.FirstURL && topic.Text) {
+      results.push({
+        id: `ddg-rel-${topic.FirstURL}`,
+        platform: "DuckDuckGo",
+        title: topic.Text.slice(0, 100),
+        url: topic.FirstURL,
+        score: 60,
+        country,
+        snippet: topic.Text?.slice(0, 300),
+      });
+    }
+    if (results.length >= 8) break;
+  }
+
+  return results;
+}
+
+// Everyday-life source: Quora via Quetre (public instance, no key)
+async function quoraViaQuetre(q: string, country: string): Promise<QA[]> {
+  const instance = "https://quetre.iket.me";
+  const data = await safeFetch(
+    `${instance}/api/v1/search?q=${encodeURIComponent(q)}`
+  );
+  if (!data) return [];
+
+  const items = data?.results ?? data?.items ?? [];
+  return items.slice(0, 10).map((item: any) => ({
+    id: `quora-${item.id ?? item.url ?? Math.random()}`,
+    platform: "Quora",
+    title: item.title ?? item.question ?? "(question)",
+    url: item.url?.startsWith("http") ? item.url : `${instance}${item.url ?? ""}`,
+    score: item.upvotes ?? item.score ?? 0,
+    country,
+    snippet: item.snippet?.slice(0, 200),
+  }));
+}
+
+// Strict relevance — drops anything whose title/snippet doesn't contain the keyword
+function matchesKeyword(qa: QA, keyword: string): boolean {
+  const kw = keyword.toLowerCase().trim();
+  if (!kw) return false;
+
+  const haystack = `${(qa.title ?? "").toLowerCase()} ${(qa.snippet ?? "").toLowerCase()}`;
+
+  // Exact phrase
+  if (haystack.includes(kw)) return true;
+
+  // All significant words must appear (order doesn't matter)
+  const words = kw.split(/\s+/).filter((w) => w.length > 2);
+  if (words.length === 0) return true;
+  return words.every((w) => haystack.includes(w));
+}
+
 function dedupe(results: QA[]) {
   const seen = new Set<string>();
   return results.filter((r) => {
@@ -179,7 +263,6 @@ function dedupe(results: QA[]) {
   });
 }
 
-// ---------- POST handler ----------
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
@@ -191,7 +274,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Keyword required" }, { status: 400 });
   }
 
-  const results = await Promise.all([
+  const raw = await Promise.all([
     reddit(keyword, country),
     lemmy("https://lemmy.world", keyword, country),
     mbin(keyword, country),
@@ -201,11 +284,17 @@ export async function POST(req: Request) {
     hackerNews(keyword, country),
     devTo(keyword, country),
     discourse(keyword, country),
+    duckDuckGo(keyword, country),
+    quoraViaQuetre(keyword, country),
   ]);
 
-  const merged = dedupe(results.flat())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 80);
+  const all = raw.flat();
+  const filtered = dedupe(all).filter((qa) => matchesKeyword(qa, keyword));
+  const sorted = filtered.sort((a, b) => b.score - a.score).slice(0, 60);
 
-  return NextResponse.json({ results: merged, count: merged.length });
+  return NextResponse.json({
+    results: sorted,
+    count: sorted.length,
+    filteredOut: all.length - filtered.length,
+  });
 }

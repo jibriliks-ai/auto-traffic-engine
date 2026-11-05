@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   Loader2, CheckCircle2, Copy, ExternalLink,
-  Sparkles, ChevronDown, X, Building2, Send, Check, Search,
+  Sparkles, ChevronDown, X, Building2, Send, Check, Search, Globe,
 } from "lucide-react";
 
 type Site = { name: string; url: string; category: string; da: number };
@@ -16,6 +16,10 @@ type Listing = {
   siteCategory: string;
   title: string;
   body: string;
+  // translation bookkeeping
+  originalTitle?: string;
+  originalBody?: string;
+  translatedTo?: string;
 };
 
 type Business = {
@@ -24,6 +28,31 @@ type Business = {
   website: string;
   keywords: string;
 };
+
+const LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "fr", label: "French" },
+  { code: "es", label: "Spanish" },
+  { code: "de", label: "German" },
+  { code: "pt", label: "Portuguese" },
+  { code: "it", label: "Italian" },
+  { code: "ar", label: "Arabic" },
+  { code: "zh-CN", label: "Chinese (Simplified)" },
+  { code: "hi", label: "Hindi" },
+  { code: "yo", label: "Yoruba" },
+  { code: "ig", label: "Igbo" },
+  { code: "ha", label: "Hausa" },
+  { code: "sw", label: "Swahili" },
+  { code: "ru", label: "Russian" },
+  { code: "ja", label: "Japanese" },
+  { code: "ko", label: "Korean" },
+  { code: "tr", label: "Turkish" },
+  { code: "nl", label: "Dutch" },
+];
+
+function languageLabel(code: string): string {
+  return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+}
 
 export default function ClassifiedsPage() {
   const [countries, setCountries] = useState<Record<string, Site[]>>({});
@@ -35,6 +64,7 @@ export default function ClassifiedsPage() {
   const [selectedSites, setSelectedSites] = useState<Set<string>>(new Set());
   const [keywords, setKeywords] = useState("");
   const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [translateTo, setTranslateTo] = useState("");
 
   const [generating, setGenerating] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -43,7 +73,9 @@ export default function ClassifiedsPage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [savedSites, setSavedSites] = useState<Set<string>>(new Set());
   const [savingSite, setSavingSite] = useState<string | null>(null);
+  const [translatingIdx, setTranslatingIdx] = useState<number | null>(null);
 
+  // Load countries + active business
   useEffect(() => {
     fetch("/api/classifieds/countries")
       .then((r) => (r.ok ? r.json() : null))
@@ -112,7 +144,14 @@ export default function ClassifiedsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setListings(data.listings ?? []);
+
+      // Store originals so translate can always start from the AI's output
+      const enriched: Listing[] = (data.listings ?? []).map((l: Listing) => ({
+        ...l,
+        originalTitle: l.title,
+        originalBody: l.body,
+      }));
+      setListings(enriched);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -149,6 +188,77 @@ export default function ClassifiedsPage() {
     }
   }
 
+  async function translateListing(index: number) {
+    if (!translateTo) {
+      setError("Choose a target language first.");
+      return;
+    }
+    const listing = listings[index];
+    if (!listing) return;
+
+    // Always translate from the AI's original output
+    const sourceTitle = listing.originalTitle ?? listing.title;
+    const sourceBody = listing.originalBody ?? listing.body;
+
+    setTranslatingIdx(index);
+    setError("");
+    try {
+      const [titleRes, bodyRes] = await Promise.all([
+        fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: sourceTitle, to: translateTo }),
+        }),
+        fetch("/api/translate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: sourceBody, to: translateTo }),
+        }),
+      ]);
+
+      const [titleData, bodyData] = await Promise.all([
+        titleRes.json(),
+        bodyRes.json(),
+      ]);
+
+      if (!titleRes.ok || !bodyRes.ok) {
+        throw new Error(titleData.error ?? bodyData.error ?? "Translation failed");
+      }
+
+      setListings((prev) =>
+        prev.map((l, i) =>
+          i === index
+            ? {
+                ...l,
+                title: titleData.translated,
+                body: bodyData.translated,
+                translatedTo: translateTo,
+              }
+            : l
+        )
+      );
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setTranslatingIdx(null);
+    }
+  }
+
+  function resetTranslation(index: number) {
+    setListings((prev) =>
+      prev.map((l, i) =>
+        i === index
+          ? {
+              ...l,
+              title: l.originalTitle ?? l.title,
+              body: l.originalBody ?? l.body,
+              translatedTo: undefined,
+            }
+          : l
+      )
+    );
+  }
+
   const filteredCountries = useMemo(() => {
     const all = Object.keys(countries).sort();
     if (!searchCountry.trim()) return all;
@@ -158,13 +268,15 @@ export default function ClassifiedsPage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Classifieds</h1>
         <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-          Generate unique AI ads for 65 countries × 10 sites. Pick, generate, copy, submit.
+          Generate unique AI ads for 65 countries × 10 sites. Pick, generate, translate, submit.
         </p>
       </div>
 
+      {/* Business banner */}
       {!businessLoading && (
         <>
           {business ? (
@@ -198,7 +310,7 @@ export default function ClassifiedsPage() {
         </>
       )}
 
-      {/* Config */}
+      {/* Config card */}
       <div className="rounded-xl border border-border/60 bg-card">
         <div className="border-b border-border/60 p-4 sm:p-5">
           <div className="font-semibold">1. Choose target sites</div>
@@ -207,6 +319,7 @@ export default function ClassifiedsPage() {
           </div>
         </div>
         <div className="space-y-4 p-4 sm:p-5">
+          {/* Country selector */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">Country</label>
             <button
@@ -218,6 +331,7 @@ export default function ClassifiedsPage() {
             </button>
           </div>
 
+          {/* Sites grid */}
           <div>
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-medium">
@@ -267,6 +381,7 @@ export default function ClassifiedsPage() {
             </div>
           </div>
 
+          {/* Keywords */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
               2. Target keywords for these ads
@@ -279,6 +394,29 @@ export default function ClassifiedsPage() {
             />
           </div>
 
+          {/* Target language (optional) */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              3. Translate generated ads to (optional)
+            </label>
+            <select
+              value={translateTo}
+              onChange={(e) => setTranslateTo(e.target.value)}
+              className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none sm:max-w-xs"
+            >
+              <option value="">Keep AI language (no translation)</option>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-muted-foreground">
+              You can also translate individual listings after generation.
+            </div>
+          </div>
+
+          {/* Generate button */}
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={generate}
@@ -316,7 +454,7 @@ export default function ClassifiedsPage() {
                 {listings.length} unique listing{listings.length === 1 ? "" : "s"} ready
               </div>
               <div className="text-xs text-muted-foreground">
-                Copy each one → open the site → paste → mark submitted.
+                Copy → open site → paste → mark submitted.
               </div>
             </div>
             <div className="text-xs text-muted-foreground">
@@ -326,8 +464,10 @@ export default function ClassifiedsPage() {
 
           {listings.map((listing, idx) => {
             const saved = savedSites.has(listing.siteName);
+            const translating = translatingIdx === idx;
             const titleKey = `title-${idx}`;
             const bodyKey = `body-${idx}`;
+
             return (
               <div
                 key={`${listing.siteName}-${idx}`}
@@ -337,13 +477,18 @@ export default function ClassifiedsPage() {
                     : "border-border/60"
                 }`}
               >
-                {/* Header */}
+                {/* Card header */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 p-3 sm:p-4">
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <span className="truncate font-semibold">{listing.siteName}</span>
                     <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
                       {listing.siteCategory}
                     </span>
+                    {listing.translatedTo && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400">
+                        <Globe className="h-2.5 w-2.5" /> {languageLabel(listing.translatedTo)}
+                      </span>
+                    )}
                     {saved && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
                         <Check className="h-2.5 w-2.5" /> Submitted
@@ -417,20 +562,57 @@ export default function ClassifiedsPage() {
                     </div>
                   </div>
 
-                  {/* Footer actions */}
+                  {/* Actions */}
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => {
-                        copyText(`${titleKey}-both`, `${listing.title}\n\n${listing.body}`);
-                        setTimeout(
-                          () => copyText(`${bodyKey}-both`, `${listing.title}\n\n${listing.body}`),
-                          100
-                        );
-                      }}
+                      onClick={() =>
+                        copyText(
+                          `both-${idx}`,
+                          `${listing.title}\n\n${listing.body}`
+                        )
+                      }
                       className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted"
                     >
-                      <Copy className="h-3 w-3" /> Copy both
+                      {copiedKey === `both-${idx}` ? (
+                        <>
+                          <CheckCircle2 className="h-3 w-3" /> Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" /> Copy both
+                        </>
+                      )}
                     </button>
+
+                    {!listing.translatedTo && (
+                      <button
+                        onClick={() => translateListing(idx)}
+                        disabled={!translateTo || translating}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                        title={
+                          translateTo
+                            ? `Translate to ${languageLabel(translateTo)}`
+                            : "Pick a language above first"
+                        }
+                      >
+                        {translating ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Globe className="h-3 w-3" />
+                        )}
+                        {translating ? "Translating…" : "Translate"}
+                      </button>
+                    )}
+
+                    {listing.translatedTo && (
+                      <button
+                        onClick={() => resetTranslation(idx)}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted"
+                      >
+                        Reset to original
+                      </button>
+                    )}
+
                     <button
                       onClick={() => markSubmitted(listing)}
                       disabled={savingSite === listing.siteName || saved}
@@ -447,7 +629,11 @@ export default function ClassifiedsPage() {
                       ) : (
                         <Send className="h-3 w-3" />
                       )}
-                      {saved ? "Submitted" : savingSite === listing.siteName ? "Saving…" : "Mark submitted"}
+                      {saved
+                        ? "Submitted"
+                        : savingSite === listing.siteName
+                        ? "Saving…"
+                        : "Mark submitted"}
                     </button>
                   </div>
                 </div>
