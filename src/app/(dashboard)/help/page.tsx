@@ -30,7 +30,7 @@ const ARTICLES: Article[] = [
     title: "Create your first business",
     content: `Every module targets a "business" — it holds your name, website, keywords, and description. AI uses this to tailor every output.
 
-**Steps:**
+Steps:
 1. Click **Businesses** in the sidebar
 2. Click **Add business**
 3. Fill in all four fields — name, website, keywords, description
@@ -46,7 +46,7 @@ All modules (SEO, Q&A, Classifieds, Indexer) auto-pull your active business's we
     title: "Switch between businesses",
     content: `If you have multiple businesses (Premium plan), you control which one the modules use.
 
-**How:**
+How:
 1. Click the business dropdown in the **topbar** (next to theme toggle)
 2. Pick another business
 3. All modules instantly re-target that business
@@ -81,7 +81,7 @@ Upgrade from **/billing**. Test card: 5531 8866 5214 2950 · CVV 564 · exp 09/3
     title: "Add a business",
     content: `Click **Businesses** in the sidebar → **Add business**.
 
-**Required fields:**
+Required fields:
 - **Name** (min 2 chars) — displayed in UI + used by AI
 - **Website** — with or without https, we normalize it
 - **Keywords** — comma-separated, e.g. "email marketing, automation, small business"
@@ -98,7 +98,7 @@ The description is the most important field — the AI reads it when drafting Q&
 - **Edit** — opens the form with current values
 - **Delete** — removes it permanently
 
-Deleting a business does **not** delete submissions, Q&A posts, or payments linked to it — those get orphaned (businessId → null) but stay in your records.`,
+Deleting a business does NOT delete submissions, Q&A posts, or payments linked to it — those get orphaned (businessId → null) but stay in your records.`,
   },
   {
     id: "seo-how",
@@ -117,7 +117,7 @@ Deleting a business does **not** delete submissions, Q&A posts, or payments link
 
 Green tick = pass. Amber = warning. Red = critical.
 
-**Limitations:** sites behind Cloudflare or blocking bots will return 403. Try a different URL.`,
+Limitations: sites behind Cloudflare or blocking bots will return 403. Try a different URL.`,
   },
   {
     id: "seo-fix",
@@ -135,7 +135,7 @@ We send the original page to GPT-4o-mini (or DeepSeek) with strict instructions:
 
 You get back a complete HTML document. **Download .html** → replace your page → done.
 
-Requires an AI key in Render env (`OPENAI_API_KEY` or `DEEPSEEK_API_KEY`).`,
+Requires an AI key in Render env — set either **OPENAI_API_KEY** or **DEEPSEEK_API_KEY** as an environment variable.`,
   },
   {
     id: "qa-search",
@@ -164,7 +164,7 @@ Each published post gets a unique URL with FAQPage + Article JSON-LD schema, mak
     id: "classifieds-how",
     category: "classifieds",
     title: "Generate classified ads",
-    content: `**Steps:**
+    content: `Steps:
 1. Pick a country (65 available)
 2. Select up to 10 sites (checkbox per site)
 3. Enter target keywords (pre-filled from your business)
@@ -195,7 +195,7 @@ Translation uses SimplyTranslate (primary) with MyMemory as fallback — both fr
     title: "Submit URLs to search engines",
     content: `Enter URLs (one per line) → select engines → click Submit.
 
-**IndexNow** broadcasts to Bing, Yandex, Naver, Seznam, Yep. Requires a key file at \`https://yourdomain.com/{KEY}.txt\` — download yours from the panel and upload it to your site's root.
+**IndexNow** broadcasts to Bing, Yandex, Naver, Seznam, Yep. Requires a key file at https://yourdomain.com/KEY.txt — download yours from the panel and upload it to your site's root.
 
 **Google Indexing API** submits directly to Google. Requires a service-account JSON configured in your env + the service account email added as Owner in Search Console.
 
@@ -213,7 +213,7 @@ Works on your public domain — localhost will return 403 because the key file i
 4. Pay with card, bank transfer, or USSD
 5. Return to /billing → Premium activates instantly
 
-**Test card (sandbox):** 5531 8866 5214 2950 · CVV 564 · exp 09/32 · PIN 3310 · OTP 12345
+Test card (sandbox): 5531 8866 5214 2950 · CVV 564 · exp 09/32 · PIN 3310 · OTP 12345
 
 Premium renews monthly. Cancel by contacting support — no automatic renewal.`,
   },
@@ -221,13 +221,13 @@ Premium renews monthly. Cancel by contacting support — no automatic renewal.`,
     id: "billing-failed",
     category: "billing",
     title: "Payment failed or didn't activate",
-    content: `**If the payment page didn't load:** refresh /billing and try again.
+    content: `If the payment page didn't load: refresh /billing and try again.
 
-**If you paid but Premium didn't activate:**
+If you paid but Premium didn't activate:
 1. Check that you returned to /billing after payment — the verify step needs the redirect
 2. If the verify failed, contact support with your Flutterwave transaction ID
 
-**If you got "Invalid authorization key" repeatedly:** your Flutterwave test keys were rolled. Go to dashboard.flutterwave.com → Settings → API Keys → copy a fresh test secret key into Render's `FLUTTERWAVE_SECRET_KEY`, redeploy.`,
+If you got "Invalid authorization key" repeatedly: your Flutterwave test keys were rolled. Go to dashboard.flutterwave.com → Settings → API Keys → copy a fresh test secret key into Render's **FLUTTERWAVE_SECRET_KEY** environment variable, redeploy.`,
   },
 ];
 
