@@ -5,7 +5,6 @@ import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
-import { isEnvAdmin } from "./admin";
 
 /**
  * Detect whether we're serving over HTTPS.

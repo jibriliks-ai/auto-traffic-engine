@@ -39,7 +39,6 @@ async function isAdminUser(userId: string): Promise<boolean> {
   }
 }
 
-import { prisma } from "./prisma";
 
 const FREE_INDEXER_DAILY = 2;
 const FREE_QA_DAILY = 5;
