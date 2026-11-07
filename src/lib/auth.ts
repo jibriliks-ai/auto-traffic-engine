@@ -1,3 +1,4 @@
+import { isEnvAdmin } from "@/lib/admin";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
@@ -103,6 +104,31 @@ export const authOptions: NextAuthOptions = {
         sameSite: sameSitePolicy,
         path: "/",
         secure: useSecureCookies,
+        // src/lib/auth.ts — inside callbacks:
+
+async jwt({ token, user }: any) {
+  if (user) {
+    token.id = user.id;
+    token.role = (user as any).role ?? "user";
+    token.plan = (user as any).plan ?? "free";
+    token.email = user.email;
+  }
+  // Env-admin promotion — runs on every JWT refresh
+  if (token.email && isEnvAdmin(token.email as string)) {
+    token.role = "admin";
+  }
+  return token;
+},
+
+async session({ session, token }: any) {
+  if (session.user) {
+    (session.user as any).id = token.id;
+    (session.user as any).role = token.role;
+    (session.user as any).plan = token.plan;
+    (session.user as any).isAdmin = token.role === "admin";
+  }
+  return session;
+},
       },
     },
     csrfToken: {

@@ -1,25 +1,30 @@
-/**
- * Admin access control.
- *
- * Two sources of truth:
- * 1. `ADMIN_EMAILS` env var (comma-separated) — wins over DB
- * 2. `User.role === "admin"` in the database
- *
- * If a user's email is in ADMIN_EMAILS, they are admin regardless of DB role.
- * This lets you manage admins from Render's env tab without SQL.
- */
+// src/lib/admin.ts
 
-export function getEnvAdmins(): string[] {
+/**
+ * Returns true if the email is in the ADMIN_EMAILS env var.
+ * ADMIN_EMAILS is a comma-separated list, case-insensitive.
+ */
+export function isEnvAdmin(email?: string | null): boolean {
+  if (!email) return false;
   const raw = process.env.ADMIN_EMAILS ?? "";
-  return raw
+  if (!raw.trim()) return false;
+  const list = raw
     .split(",")
-    .map((e) => e.trim().toLowerCase())
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
+  return list.includes(email.toLowerCase());
 }
 
-export function isEnvAdmin(email: string | null | undefined): boolean {
-  if (!email) return false;
-  const admins = getEnvAdmins();
-  if (admins.length === 0) return false;
-  return admins.includes(email.toLowerCase());
+/**
+ * Returns true if a NextAuth session belongs to an admin.
+ * Checks (in order):
+ *   1. session.user.role === "admin"   (set from DB)
+ *   2. session.user.isAdmin === true   (legacy)
+ *   3. session.user.email in ADMIN_EMAILS env
+ */
+export function isAdminSession(session: any): boolean {
+  if (!session?.user) return false;
+  if (session.user.role === "admin") return true;
+  if (session.user.isAdmin === true) return true;
+  return isEnvAdmin(session.user.email);
 }

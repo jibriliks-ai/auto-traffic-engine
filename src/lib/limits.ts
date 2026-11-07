@@ -1,3 +1,44 @@
+import { prisma } from "@/lib/prisma";
+import { isEnvAdmin } from "@/lib/admin";
+
+export type Usage = {
+  allowed: boolean;
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+  isPremium: boolean;
+  isAdmin?: boolean;
+};
+
+/** What every check function returns for an admin. */
+export const UNLIMITED: Usage = {
+  allowed: true,
+  used: 0,
+  limit: null,
+  remaining: null,
+  isPremium: true,
+  isAdmin: true,
+};
+
+/**
+ * One DB hit per check, cached within the request by Next.js's
+ * built-in fetch/db memoisation. Returns true for role='admin'
+ * in DB OR email in ADMIN_EMAILS env.
+ */
+async function isAdminUser(userId: string): Promise<boolean> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, role: true },
+    });
+    if (!user) return false;
+    if (user.role === "admin") return true;
+    return isEnvAdmin(user.email);
+  } catch {
+    return false;
+  }
+}
+
 import { prisma } from "./prisma";
 
 const FREE_INDEXER_DAILY = 2;
