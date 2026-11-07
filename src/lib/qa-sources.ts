@@ -427,21 +427,21 @@ export async function fetchQAPool(
           keyword
         )}&sort=relevance&limit=10`
       );
-      const children = data?.data?.children ?? [];
-      unique = children
-        .filter((c: any) => c?.data?.title && !c?.data?.over_18)
-        .map<QA>((c: any) => ({
-          id: `reddit-${c.data.id}`,
-          platform: "Reddit",
-          title: c.data.title,
-          url: `https://reddit.com${c.data.permalink}`,
-          score: c.data.score ?? 0,
-          country,
-          snippet: c.data.selftext
-            ? String(c.data.selftext).slice(0, 240)
-            : undefined,
-          createdUtc: c.data.created_utc,
-        }));
+      const children: any[] = data?.data?.children ?? [];
+unique = children
+  .filter((c: any) => c?.data?.title && !c?.data?.over_18)
+  .map((c: any) => ({
+    id: `reddit-${c.data.id}`,
+    platform: "Reddit",
+    title: c.data.title,
+    url: `https://reddit.com${c.data.permalink}`,
+    score: c.data.score ?? 0,
+    country,
+    snippet: c.data.selftext
+      ? String(c.data.selftext).slice(0, 240)
+      : undefined,
+    createdUtc: c.data.created_utc,
+  })) as QA[];
       if (unique.length > 0) succeededSources.push("Reddit (fallback)");
     } catch {
       /* ignore */
