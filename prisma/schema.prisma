@@ -35,6 +35,10 @@ model User {
   qaPosts        QAPost[]
   payments       Payment[]
   passwordResetTokens PasswordResetToken[]
+  affiliateAccounts UserAffiliateAccount[]
+  moneyEnginePosts  MoneyEnginePost[]
+  moneyEngineClicks MoneyEngineClick[]
+  moneyEngineSales  MoneyEngineSale[]
 }
 
 model Account {
@@ -198,4 +202,137 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expires])
+}
+// ═══════════════════════════════════════════════════════════
+// AUTO MONEY ENGINE — v2.0
+// ═══════════════════════════════════════════════════════════
+
+model UserAffiliateAccount {
+  id                    String    @id @default(cuid())
+  userId                String
+  platform              String    // 'warriorplus','jvzoo','impact','partnerstack','temu','aliexpress','jumia','konga'
+  affiliateUsername     String?
+  affiliateId           String?
+  apiKeyEncrypted       String?   @db.Text
+  apiSecretEncrypted    String?   @db.Text
+  accessTokenEncrypted  String?   @db.Text
+  refreshTokenEncrypted String?   @db.Text
+  accountId             String?
+  isConnected           Boolean   @default(false)
+  lastVerifiedAt        DateTime?
+  createdAt             DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@map("user_affiliate_accounts")
+}
+
+model MoneyEngineOffer {
+  id                  String    @id @default(cuid())
+  productType         String    // 'digital' | 'physical'
+  platform            String
+  offerId             String
+  title               String
+  vendor              String?
+  category            String?
+  frontEndPrice       Decimal?  @db.Decimal(10, 2)
+  originalPrice       Decimal?  @db.Decimal(10, 2)
+  funnelMaxPrice      Decimal?  @db.Decimal(10, 2)
+  commissionPct       Decimal?  @db.Decimal(5, 2)
+  commissionAmount    Decimal?  @db.Decimal(10, 2)
+  commissionType      String    @default("CPS")
+  epc                 Decimal   @default(0) @db.Decimal(10, 2)
+  conversionRate      Decimal   @default(0) @db.Decimal(5, 2)
+  gravity             Decimal   @default(0) @db.Decimal(10, 2)
+  refundRate          Decimal   @default(0) @db.Decimal(5, 2)
+  orders7days         Int       @default(0)
+  rating              Decimal   @default(0) @db.Decimal(3, 2)
+  isRecurring         Boolean   @default(false)
+  recurringMonths     Int       @default(0)
+  salesPageUrl        String?   @db.Text
+  imageUrl            String?   @db.Text
+  videoUrl            String?   @db.Text
+  affiliateLinkTemplate String? @db.Text
+  swipeCopy           String?   @db.Text
+  status              String    @default("active") // 'active' | 'paused' | 'dead'
+  score               Decimal   @default(0) @db.Decimal(10, 2)
+  priority            String    @default("normal") // 'low' | 'normal' | 'high'
+  lastSyncedAt        DateTime  @default(now())
+  createdAt           DateTime  @default(now())
+
+  posts  MoneyEnginePost[]
+  clicks MoneyEngineClick[]
+  sales  MoneyEngineSale[]
+
+  @@unique([platform, offerId])
+  @@index([score(sort: Desc)])
+  @@index([productType])
+  @@map("money_engine_offers")
+}
+
+model MoneyEnginePost {
+  id            String    @id @default(cuid())
+  userId        String
+  offerId       String
+  productType   String
+  trafficModule String    // 'tiktok' | 'facebook' | 'x' | 'youtube'
+  caption       String?   @db.Text
+  script        String?   @db.Text
+  videoUrl      String?   @db.Text
+  affiliateLink String    @db.Text
+  cloakedLink   String?   @db.Text
+  utmSource     String?
+  status        String    @default("draft") // 'draft' | 'queued' | 'posted' | 'failed'
+  postedAt      DateTime?
+  clicks        Int       @default(0)
+  sales         Int       @default(0)
+  commission    Decimal   @default(0) @db.Decimal(10, 2)
+  createdAt     DateTime  @default(now())
+
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer  MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  clicksRel MoneyEngineClick[]
+  salesRel  MoneyEngineSale[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("money_engine_posts")
+}
+
+model MoneyEngineClick {
+  id            String   @id @default(cuid())
+  postId        String
+  userId        String
+  offerId       String
+  trafficSource String?
+  ipAddress     String?
+  userAgent     String?  @db.Text
+  clickedAt     DateTime @default(now())
+
+  post  MoneyEnginePost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer MoneyEngineOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([offerId])
+  @@map("money_engine_clicks")
+}
+
+model MoneyEngineSale {
+  id               String   @id @default(cuid())
+  userId           String
+  offerId          String
+  postId           String?
+  platform         String
+  transactionId    String?
+  saleAmount       Decimal  @db.Decimal(10, 2)
+  commissionAmount Decimal  @db.Decimal(10, 2)
+  status           String   @default("pending")
+  createdAt        DateTime @default(now())
+
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  post  MoneyEnginePost?  @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@map("money_engine_sales")
 }
