@@ -1,52 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 import { signOut } from "next-auth/react";
 
-const IDLE_MS = 20 * 60 * 1000;        // 20 minutes
-const WARN_MS = 60 * 1000;             // warn 1 min before logout
-const CHECK_INTERVAL = 10 * 1000;      // check every 10s
+const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
-export function useIdleTimeout() {
-  const [showWarning, setShowWarning] = useState(false);
-  const [remainingSeconds, setRemainingSeconds] = useState(0);
+/**
+ * Signs the user out after a period of inactivity.
+ *
+ * Activity = mouse movement, click, keyboard, touch, scroll, or tab
+ * becoming visible again (user switched back to the tab).
+ *
+ * On timeout: clears the NextAuth cookie, then hard-navigates to /login
+ * so the browser reloads session state from the server.
+ */
+export function useIdleTimeout(timeoutMs: number = DEFAULT_TIMEOUT_MS) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
 
   useEffect(() => {
-    let lastActivity = Date.now();
-    let warned = false;
-
-    function reset() {
-      lastActivity = Date.now();
-      if (warned) {
-        warned = false;
-        setShowWarning(false);
-      }
+    function logout() {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      // Fire-and-forget signOut, then hard-nav regardless.
+      signOut({ redirect: false })
+        .catch(() => {})
+        .finally(() => {
+          window.location.href = "/login?reason=idle";
+        });
     }
 
-    const events = ["mousedown", "keydown", "touchstart", "scroll", "mousemove", "focus"];
-    events.forEach((e) =>
-      window.addEventListener(e, reset, { passive: true })
-    );
+    function reset() {
+      if (firedRef.current) return;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(logout, timeoutMs);
+    }
 
-    const interval = setInterval(() => {
-      const idle = Date.now() - lastActivity;
-      if (idle >= IDLE_MS) {
-        clearInterval(interval);
-        signOut({ callbackUrl: "/login?expired=1" });
-      } else if (!warned && idle >= IDLE_MS - WARN_MS) {
-        warned = true;
-        setShowWarning(true);
-        setRemainingSeconds(Math.ceil((IDLE_MS - idle) / 1000));
-      } else if (warned) {
-        setRemainingSeconds(Math.max(0, Math.ceil((IDLE_MS - idle) / 1000)));
-      }
-    }, CHECK_INTERVAL);
+    // Activity events — passive so they don't hurt scroll performance
+    const events: (keyof WindowEventMap)[] = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+      "wheel",
+    ];
+
+    events.forEach((ev) => window.addEventListener(ev, reset, { passive: true }));
+
+    // Reset when the tab becomes visible again (user was away, came back)
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") reset();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Kick off the first timer
+    reset();
 
     return () => {
-      events.forEach((e) => window.removeEventListener(e, reset));
-      clearInterval(interval);
+      events.forEach((ev) => window.removeEventListener(ev, reset));
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
-
-  return { showWarning, remainingSeconds };
+  }, [timeoutMs]);
 }

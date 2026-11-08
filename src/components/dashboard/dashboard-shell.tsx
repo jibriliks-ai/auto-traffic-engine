@@ -13,6 +13,7 @@ import {
 import InstallPWAButton from "@/components/install-pwa-button";
 import { InstallPWAProvider, useInstallPrompt } from "@/components/install-pwa-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 
 type Business = { id: string; name: string };
 
@@ -39,6 +40,9 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 }
 
 function ShellInner({ children }: { children: React.ReactNode }) {
+  // ─── 20-minute idle logout ───
+  useIdleTimeout();
+
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -70,20 +74,26 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   async function switchBusiness(id: string) {
     setActiveId(id);
     try {
-      await fetch("/api/businesses/active", {
+      const res = await fetch("/api/businesses/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessId: id }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // Silent failure would leave UI in a bad state — reload on error to restore truth
+        alert(data?.error ?? "Failed to switch business");
+        window.location.reload();
+        return;
+      }
       window.location.reload();
     } catch {
-      /* ignore */
+      window.location.reload();
     }
   }
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-border/60 bg-card transition-transform duration-200 lg:static lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -188,13 +198,10 @@ function ShellInner({ children }: { children: React.ReactNode }) {
               )
             )}
 
-            {/* Install button — always visible until installed */}
             <TopbarInstallButton />
 
-            {/* Theme toggle */}
             <ThemeToggle />
 
-            {/* User menu */}
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen((v) => !v)}
@@ -268,11 +275,6 @@ function ShellInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ────────────────────────────────────────────────────────────
-   Topbar Install Button — always visible until installed.
-   Uses the shared install context. Falls back to a manual
-   guide modal if the browser won't fire a native prompt.
-   ──────────────────────────────────────────────────────────── */
 function TopbarInstallButton() {
   const { canInstall, isInstalled, isIOS, promptInstall } = useInstallPrompt();
   const [showGuide, setShowGuide] = useState(false);
@@ -281,7 +283,6 @@ function TopbarInstallButton() {
 
   async function handleClick() {
     const outcome = await promptInstall();
-    // If native prompt unavailable (already dismissed, browser unsupported, or iOS)
     if (outcome === "unavailable" || isIOS) {
       setShowGuide(true);
     }
@@ -302,7 +303,6 @@ function TopbarInstallButton() {
   );
 }
 
-/* Manual install instructions — adapts to the visitor's browser. */
 function InstallGuideModal({ onClose }: { onClose: () => void }) {
   const [platform, setPlatform] = useState<"android" | "ios" | "desktop" | "mac-safari">("desktop");
 
