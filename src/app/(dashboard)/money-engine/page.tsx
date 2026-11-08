@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
   Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
-  Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock,
+  Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock, Film,
 } from "lucide-react";
 
 type Offer = {
@@ -25,14 +25,22 @@ type Offer = {
   priority: string;
   isRecurring: boolean;
 };
+
 type Stats = { totalActive: number; digitalCount: number; physicalCount: number };
-type GeneratedPost = { id: string; trafficModule: string; caption: string; script: string };
+
+type GeneratedPost = {
+  id: string;
+  trafficModule: string;
+  caption: string;
+  script: string;
+};
 
 const TABS = [
   { key: "all", label: "All" },
   { key: "digital", label: "Digital" },
   { key: "physical", label: "Physical" },
 ] as const;
+
 const MODULES = ["tiktok", "facebook", "x", "youtube"] as const;
 
 export default function MoneyEnginePage() {
@@ -67,6 +75,7 @@ export default function MoneyEnginePage() {
       setLoading(false);
     }
   }
+
   async function seedMock() {
     setSyncing(true);
     setError("");
@@ -81,6 +90,7 @@ export default function MoneyEnginePage() {
       setSyncing(false);
     }
   }
+
   async function generate(offerId: string) {
     setGenerating(offerId);
     setDrafts(null);
@@ -115,7 +125,6 @@ export default function MoneyEnginePage() {
     );
   }
 
-  // ─── PREMIUM GATE ───
   if (!isUnlocked) {
     return <UpgradeGate />;
   }
@@ -149,7 +158,8 @@ export default function MoneyEnginePage() {
 
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span>
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="break-words">{error}</span>
         </div>
       )}
 
@@ -161,11 +171,17 @@ export default function MoneyEnginePage() {
 
       <div className="flex gap-2 border-b border-border/60">
         {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-              tab === t.key ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
+              tab === t.key
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
-          >{t.label}</button>
+          >
+            {t.label}
+          </button>
         ))}
       </div>
 
@@ -182,14 +198,23 @@ export default function MoneyEnginePage() {
           <div className="divide-y divide-border/60">
             {offers.map((o) => (
               <div key={o.id} className="flex flex-wrap items-start gap-3 p-4">
-                <img src={o.imageUrl ?? "https://via.placeholder.com/64"} alt=""
-                  className="h-14 w-14 shrink-0 rounded-lg bg-muted object-cover" />
+                <img
+                  src={o.imageUrl ?? "https://via.placeholder.com/64"}
+                  alt=""
+                  className="h-14 w-14 shrink-0 rounded-lg bg-muted object-cover"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                      o.productType === "digital" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                    }`}>{o.productType}</span>
-                    <span className="text-xs text-muted-foreground uppercase">{o.platform}</span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                        o.productType === "digital"
+                          ? "bg-primary/10 text-primary"
+                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {o.productType}
+                    </span>
+                    <span className="text-xs uppercase text-muted-foreground">{o.platform}</span>
                     {o.isRecurring && (
                       <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
                         🔁 Recurring
@@ -206,27 +231,57 @@ export default function MoneyEnginePage() {
                     {o.frontEndPrice && (
                       <span className="inline-flex items-center gap-1">
                         <DollarSign className="h-3 w-3" /> ${Number(o.frontEndPrice).toFixed(2)}
-                        {o.originalPrice && <span className="line-through opacity-60">${Number(o.originalPrice).toFixed(2)}</span>}
+                        {o.originalPrice && (
+                          <span className="line-through opacity-60">
+                            ${Number(o.originalPrice).toFixed(2)}
+                          </span>
+                        )}
                       </span>
                     )}
-                    <span>{o.productType === "digital" ? `EPC $${Number(o.epc).toFixed(2)}` : `${o.orders7days.toLocaleString()} orders/wk`}</span>
+                    <span>
+                      {o.productType === "digital"
+                        ? `EPC $${Number(o.epc).toFixed(2)}`
+                        : `${o.orders7days.toLocaleString()} orders/wk`}
+                    </span>
                     {o.commissionAmount && (
                       <span className="inline-flex items-center gap-1">
                         <TrendingUp className="h-3 w-3" /> ${Number(o.commissionAmount).toFixed(2)}
-                        {o.commissionPct && <span className="opacity-70">({Number(o.commissionPct).toFixed(0)}%)</span>}
+                        {o.commissionPct && (
+                          <span className="opacity-70">
+                            ({Number(o.commissionPct).toFixed(0)}%)
+                          </span>
+                        )}
                       </span>
                     )}
-                    <span className="font-semibold text-foreground">Score {Number(o.score).toFixed(1)}</span>
+                    <span className="font-semibold text-foreground">
+                      Score {Number(o.score).toFixed(1)}
+                    </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => generate(o.id)}
-                  disabled={generating === o.id}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
-                >
-                  {generating === o.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-                  {generating === o.id ? "Generating…" : "Generate"}
-                </button>
+
+                {/* ── Action buttons ── */}
+                <div className="flex shrink-0 flex-wrap gap-1.5">
+                  <button
+                    onClick={() => generate(o.id)}
+                    disabled={generating === o.id}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
+                    title="Generate social captions for this offer"
+                  >
+                    {generating === o.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Wand2 className="h-3 w-3" />
+                    )}
+                    {generating === o.id ? "Generating…" : "Generate"}
+                  </button>
+                  <Link
+                    href={`/video?offerId=${o.id}`}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                    title="Create a 20-second video ad for this offer"
+                  >
+                    <Film className="h-3 w-3" /> Make Video
+                  </Link>
+                </div>
               </div>
             ))}
           </div>
@@ -235,9 +290,11 @@ export default function MoneyEnginePage() {
 
       <p className="text-xs text-muted-foreground">
         Connect Impact.com or PartnerStack in{" "}
-        <Link href="/money-engine/settings" className="text-primary underline">Settings</Link>{" "}
-        to sync 50+ real brands. Until then, demo offers are used and generated drafts save with link status{" "}
-        <code className="rounded bg-muted px-1">PENDING_CONNECTION</code>.
+        <Link href="/money-engine/settings" className="text-primary underline">
+          Settings
+        </Link>{" "}
+        to sync 50+ real brands. Until then, demo offers are used and generated drafts save with
+        link status <code className="rounded bg-muted px-1">PENDING_CONNECTION</code>.
       </p>
 
       {draftError && (
@@ -247,16 +304,29 @@ export default function MoneyEnginePage() {
       )}
 
       {drafts && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={() => setDrafts(null)}>
-          <div onClick={(e) => e.stopPropagation()} className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl">
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+          onClick={() => setDrafts(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
+          >
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-semibold">Generated drafts ({drafts.length})</div>
-              <button onClick={() => setDrafts(null)} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"><X className="h-4 w-4" /></button>
+              <button
+                onClick={() => setDrafts(null)}
+                className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <div className="space-y-3">
               {drafts.map((p) => (
                 <div key={p.id} className="rounded-lg border border-border/60 p-3">
-                  <div className="text-xs font-semibold uppercase text-primary">{p.trafficModule}</div>
+                  <div className="text-xs font-semibold uppercase text-primary">
+                    {p.trafficModule}
+                  </div>
                   <div className="mt-1 whitespace-pre-wrap text-sm">{p.caption}</div>
                   {p.script && p.trafficModule !== "x" && (
                     <details className="mt-2 text-xs text-muted-foreground">
@@ -268,7 +338,8 @@ export default function MoneyEnginePage() {
               ))}
             </div>
             <p className="mt-4 text-xs text-muted-foreground">
-              Saved as <strong>drafts</strong> in the database. Video rendering + auto-post arrive in Phase 3.
+              Saved as <strong>drafts</strong> in the database. Use{" "}
+              <strong>Make Video</strong> on any offer to create the MP4 advert.
             </p>
           </div>
         </div>
@@ -277,11 +348,21 @@ export default function MoneyEnginePage() {
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function StatCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">{icon}</div>
+        <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+          {icon}
+        </div>
         {label}
       </div>
       <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
@@ -300,9 +381,9 @@ function UpgradeGate() {
           Auto Money Engine — Premium
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
-          Connect Impact.com and PartnerStack once. Pull 50+ real brands — Jumia, AliExpress, Walmart,
-          Adidas, Shopify, Canva, Monday.com, HubSpot, Notion — and auto-generate video, poster, and Q&A
-          content to promote them.
+          Connect Impact.com and PartnerStack once. Pull 50+ real brands — Jumia, AliExpress,
+          Walmart, Adidas, Shopify, Canva, Monday.com, HubSpot, Notion — and auto-generate video,
+          poster, and Q&A content to promote them.
         </p>
 
         <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border/60 bg-card p-5 text-left">

@@ -6,17 +6,16 @@ import { checkBusinessLimit } from "@/lib/limits";
 
 export const runtime = "nodejs";
 
-/**
- * GET /api/businesses
- * Returns the current user's businesses + active business id.
- */
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = (session?.user as any)?.id as string | undefined;
 
-  const userId = (session.user as any).id;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized — session missing user id. Sign out and back in." },
+      { status: 401 }
+    );
+  }
 
   const [businesses, user] = await Promise.all([
     prisma.business.findMany({
@@ -35,25 +34,18 @@ export async function GET() {
   });
 }
 
-/**
- * POST /api/businesses
- * Create a new business.
- *
- * Limits (via checkBusinessLimit):
- *   - admin    → UNLIMITED
- *   - premium  → 3
- *   - free     → 1
- */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = (session?.user as any)?.id as string | undefined;
+  const plan = (session?.user as any)?.plan ?? "free";
+
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized — session missing user id. Sign out and back in." },
+      { status: 401 }
+    );
   }
 
-  const userId = (session.user as any).id;
-  const plan = (session.user as any).plan ?? "free";
-
-  // ─── THE FIX: checkBusinessLimit returns UNLIMITED for admin ───
   const limit = await checkBusinessLimit(userId, plan);
   if (!limit.allowed) {
     return NextResponse.json(
@@ -76,10 +68,7 @@ export async function POST(req: Request) {
   const keywords = (body.keywords ?? "").toString().trim() || null;
 
   if (!name) {
-    return NextResponse.json(
-      { error: "Business name is required." },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Business name is required." }, { status: 400 });
   }
 
   try {
@@ -87,7 +76,6 @@ export async function POST(req: Request) {
       data: { userId, name, website, description, keywords },
     });
 
-    // First business becomes active automatically
     const total = await prisma.business.count({ where: { userId } });
     if (total === 1) {
       await prisma.user.update({
@@ -97,7 +85,6 @@ export async function POST(req: Request) {
     }
 
     const updatedLimit = await checkBusinessLimit(userId, plan);
-
     return NextResponse.json({ business, usage: updatedLimit });
   } catch (e: any) {
     return NextResponse.json(

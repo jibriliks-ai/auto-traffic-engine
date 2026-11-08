@@ -118,16 +118,29 @@ model Submission {
 }
 
 model Video {
-  id         String   @id @default(cuid())
-  userId     String
-  businessId String?
-  url        String
-  thumbnail  String?
-  platform   String
-  status     String   @default("pending")
-  title      String?
-  createdAt  DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String    @id @default(cuid())
+  userId            String
+  businessId        String?
+  url               String
+  thumbnail         String?
+  platform          String    @default("tiktok")
+  status            String    @default("pending")
+  title             String?
+  createdAt         DateTime  @default(now())
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  template          String    @default("product_promo")
+  script            String?   @db.Text
+  productImageUrl   String?   @db.Text
+  priceText         String?
+  ctaText           String?
+  brandColor        String    @default("#4f46e5")
+  error             String?   @db.Text
+  filePath          String?
+  fileSizeBytes     Int?
+  durationSeconds   Int?
+  renderStartedAt   DateTime?
+  renderCompletedAt DateTime?
 
   @@index([userId])
 }
