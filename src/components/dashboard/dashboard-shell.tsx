@@ -8,15 +8,18 @@ import {
   LayoutDashboard, Building2, Search, MessageSquare, Link2,
   Megaphone, Share2, Video, CreditCard, HelpCircle, Shield,
   Menu, X, LogOut, ChevronDown, Sparkles, Loader2, Zap, DollarSign,
+  Download,
 } from "lucide-react";
 import InstallPWAButton from "@/components/install-pwa-button";
+import { InstallPWAProvider, useInstallPrompt } from "@/components/install-pwa-provider";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type Business = { id: string; name: string };
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/businesses", label: "Businesses", icon: Building2 },
-  { href: "/seo-audit", label: "SEO Audit", icon: Search },
+  { href: "/seo", label: "SEO Audit", icon: Search },
   { href: "/qa-finder", label: "Q&A Finder", icon: MessageSquare },
   { href: "/indexer", label: "Website Indexer", icon: Link2 },
   { href: "/classifieds", label: "Classifieds", icon: Megaphone },
@@ -28,6 +31,14 @@ const NAV = [
 ];
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
+  return (
+    <InstallPWAProvider>
+      <ShellInner>{children}</ShellInner>
+    </InstallPWAProvider>
+  );
+}
+
+function ShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { data: session, status } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -39,7 +50,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
     (session?.user as any)?.role === "admin" ||
     (session?.user as any)?.isAdmin === true;
 
-  // Load businesses + active business
   useEffect(() => {
     if (status !== "authenticated") return;
     fetch("/api/businesses")
@@ -52,7 +62,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       .catch(() => {});
   }, [status]);
 
-  // Close mobile sidebar + user menu on route change
   useEffect(() => {
     setSidebarOpen(false);
     setUserMenuOpen(false);
@@ -127,7 +136,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         </nav>
       </aside>
 
-      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
@@ -135,9 +143,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
         />
       )}
 
-      {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Topbar */}
         <header className="sticky top-0 z-20 border-b border-border/60 bg-card/95 backdrop-blur">
           <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
             <button
@@ -148,7 +154,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
               <Menu className="h-5 w-5" />
             </button>
 
-            {/* Business selector */}
             <div className="min-w-0">
               <select
                 value={activeId ?? ""}
@@ -167,7 +172,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
             <div className="flex-1" />
 
-            {/* Plan / admin badge */}
             {isAdmin ? (
               <span className="hidden items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary sm:inline-flex">
                 <Shield className="h-3 w-3" /> Admin
@@ -183,6 +187,12 @@ export default function DashboardShell({ children }: { children: React.ReactNode
                 </Link>
               )
             )}
+
+            {/* Install button — always visible until installed */}
+            <TopbarInstallButton />
+
+            {/* Theme toggle */}
+            <ThemeToggle />
 
             {/* User menu */}
             <div className="relative">
@@ -242,7 +252,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           </div>
         </header>
 
-        {/* Content */}
         <main className="flex-1 p-4 sm:p-6">
           {status === "loading" ? (
             <div className="grid place-items-center py-20">
@@ -255,6 +264,118 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       </div>
 
       <InstallPWAButton />
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────
+   Topbar Install Button — always visible until installed.
+   Uses the shared install context. Falls back to a manual
+   guide modal if the browser won't fire a native prompt.
+   ──────────────────────────────────────────────────────────── */
+function TopbarInstallButton() {
+  const { canInstall, isInstalled, isIOS, promptInstall } = useInstallPrompt();
+  const [showGuide, setShowGuide] = useState(false);
+
+  if (isInstalled) return null;
+
+  async function handleClick() {
+    const outcome = await promptInstall();
+    // If native prompt unavailable (already dismissed, browser unsupported, or iOS)
+    if (outcome === "unavailable" || isIOS) {
+      setShowGuide(true);
+    }
+  }
+
+  return (
+    <>
+      <button
+        onClick={handleClick}
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-semibold text-primary hover:bg-primary/20"
+        title="Install app to home screen"
+      >
+        <Download className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Install</span>
+      </button>
+      {showGuide && <InstallGuideModal onClose={() => setShowGuide(false)} />}
+    </>
+  );
+}
+
+/* Manual install instructions — adapts to the visitor's browser. */
+function InstallGuideModal({ onClose }: { onClose: () => void }) {
+  const [platform, setPlatform] = useState<"android" | "ios" | "desktop" | "mac-safari">("desktop");
+
+  useEffect(() => {
+    const ua = navigator.userAgent;
+    if (/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream) setPlatform("ios");
+    else if (/Android/.test(ua)) setPlatform("android");
+    else if (/Mac/.test(ua) && /Safari/.test(ua) && !/Chrome/.test(ua)) setPlatform("mac-safari");
+    else setPlatform("desktop");
+  }, []);
+
+  const steps = {
+    android: [
+      "Open this site in Chrome",
+      "Tap the ⋮ menu (top right of Chrome)",
+      "Tap 'Install app' or 'Add to Home screen'",
+      "Confirm — the app icon appears on your home screen",
+    ],
+    ios: [
+      "Open this site in Safari (not Chrome)",
+      "Tap the Share button (square with arrow at bottom)",
+      "Scroll down and tap 'Add to Home Screen'",
+      "Tap 'Add' — the app icon appears on your home screen",
+    ],
+    desktop: [
+      "Open this site in Chrome or Edge",
+      "Click the install icon (⊕) in the address bar",
+      "Or click ⋮ menu → 'Install Auto Traffic Engine'",
+      "The app opens as a standalone window and appears in your Start Menu / Applications",
+    ],
+    "mac-safari": [
+      "Open this site in Safari on macOS Sonoma or later",
+      "Click File in the menu bar",
+      "Click 'Add to Dock'",
+      "The app appears in your Dock",
+    ],
+  } as const;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold">Install Auto Traffic Engine</h3>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Add Auto Traffic to your home screen for one-tap access — no app store needed.
+        </p>
+        <ol className="space-y-3 text-sm text-muted-foreground">
+          {steps[platform].map((s, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {i + 1}
+              </span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ol>
+        <button
+          onClick={onClose}
+          className="mt-5 w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          Got it
+        </button>
+      </div>
     </div>
   );
 }
