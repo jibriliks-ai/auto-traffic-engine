@@ -25,6 +25,7 @@ export default withAuth(
           pathname.startsWith("/reset-password") ||
           pathname.startsWith("/api/auth") ||
           pathname.startsWith("/api/billing/flutterwave/webhook") ||
+          pathname.startsWith("/api/money-engine") ||
           pathname.startsWith("/r/") ||
           pathname.startsWith("/qa/") ||
           pathname === `/${INDEXNOW_KEY}.txt`
