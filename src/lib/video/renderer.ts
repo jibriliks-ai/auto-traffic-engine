@@ -5,7 +5,57 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
-const FFMPEG = String(ffmpegStatic ?? "");
+import fsSync from "fs";
+
+/**
+ * Resolve the real FFmpeg binary path.
+ * On Render, Next.js's bundling rewrites the ffmpeg-static export to a path
+ * inside .next/server/... which doesn't exist. We walk the filesystem from
+ * process.cwd() to find the actual binary in node_modules.
+ */
+function resolveFfmpegPath(): string {
+  const candidates: string[] = [];
+
+  // 1. Absolute path from require.resolve — works in plain Node
+  try {
+    const resolvedPkg = require.resolve("ffmpeg-static");
+    const pkgDir = path.dirname(resolvedPkg);
+    candidates.push(path.join(pkgDir, "ffmpeg"));
+    candidates.push(path.join(pkgDir, "ffmpeg.exe"));
+  } catch {
+    /* require.resolve may fail in bundled contexts */
+  }
+
+  // 2. From process.cwd()/node_modules — works on Render after build
+  const cwdRoot = process.cwd();
+  candidates.push(path.join(cwdRoot, "node_modules", "ffmpeg-static", "ffmpeg"));
+  candidates.push(path.join(cwdRoot, "node_modules", "ffmpeg-static", "ffmpeg.exe"));
+
+  // 3. Go up a couple levels in case cwd is nested (Render may cd into a subdir)
+  candidates.push(path.join(cwdRoot, "..", "node_modules", "ffmpeg-static", "ffmpeg"));
+  candidates.push(path.join(cwdRoot, "..", "..", "node_modules", "ffmpeg-static", "ffmpeg"));
+
+  // 4. Whatever ffmpeg-static exported as last resort
+  if (ffmpegStatic) candidates.push(String(ffmpegStatic));
+
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fsSync.existsSync(candidate)) {
+        console.log(`[video] FFmpeg resolved: ${candidate}`);
+        return candidate;
+      }
+    } catch {
+      /* keep trying */
+    }
+  }
+
+  throw new Error(
+    `FFmpeg binary not found. Tried:\n${candidates.join("\n")}\n` +
+      `cwd=${process.cwd()}`
+  );
+}
+
+const FFMPEG = resolveFfmpegPath();
 
 const WIDTH = 1080;
 const HEIGHT = 1920;
