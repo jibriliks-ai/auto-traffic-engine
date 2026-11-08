@@ -1,7 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "@/lib/prisma";
 import { compare } from "bcryptjs";
+import { prisma } from "@/lib/prisma";
 import { isEnvAdmin } from "@/lib/admin";
 
 export const authOptions: NextAuthOptions = {
@@ -20,21 +20,22 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.toLowerCase().trim() },
         });
-        if (!user || !user.password) return null;
 
-        const valid = await compare(credentials.password, user.password);
+        // User must exist and have a password (OAuth-only users have null passwordHash)
+        if (!user || !user.passwordHash) return null;
+
+        const valid = await compare(credentials.password, user.passwordHash);
         if (!valid) return null;
 
         return {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: (user as any).role ?? "user",
-          plan: (user as any).plan ?? "free",
+          role: user.role ?? "user",
+          plan: user.plan ?? "free",
         } as any;
       },
     }),
-    // ...your existing Google provider (if enabled) stays here unchanged...
   ],
 
   callbacks: {
@@ -48,8 +49,8 @@ export const authOptions: NextAuthOptions = {
       }
 
       // ─── ADMIN PROMOTION (runs on every JWT refresh) ───
-      // Env-admin OR DB role=admin → becomes role='admin' AND plan='premium'.
-      // plan='premium' is what unlocks every "premium only" gate in the app.
+      // Env-admin OR DB role=admin → force role='admin' AND plan='premium'.
+      // plan='premium' unlocks every "premium only" gate in the app.
       if (token.email) {
         const emailIsAdmin = isEnvAdmin(token.email as string);
         const dbRoleIsAdmin = token.role === "admin";
@@ -59,7 +60,7 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // Re-fetch role/plan from DB on session update (sign-in as someone else, etc.)
+      // Re-fetch from DB on explicit session update
       if (trigger === "update" && token.id) {
         const fresh = await prisma.user.findUnique({
           where: { id: token.id as string },
