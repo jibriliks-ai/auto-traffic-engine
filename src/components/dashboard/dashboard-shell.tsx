@@ -7,7 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard, Building2, Search, MessageSquare, Link2,
   Megaphone, Share2, Video, CreditCard, HelpCircle, Shield,
-  Menu, X, LogOut, ChevronDown, Sparkles, Loader2, Zap,
+  Menu, X, LogOut, ChevronDown, Sparkles, Loader2, Zap, DollarSign,
 } from "lucide-react";
 import InstallPWAButton from "@/components/install-pwa-button";
 
@@ -21,6 +21,7 @@ const NAV = [
   { href: "/indexer", label: "Website Indexer", icon: Link2 },
   { href: "/classifieds", label: "Classifieds", icon: Megaphone },
   { href: "/social", label: "Social Poster", icon: Share2 },
+  { href: "/money-engine", label: "Auto Money Engine", icon: DollarSign },
   { href: "/video", label: "Video", icon: Video },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/help", label: "Help Center", icon: HelpCircle },
