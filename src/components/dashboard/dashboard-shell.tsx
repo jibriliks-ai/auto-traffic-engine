@@ -52,7 +52,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       .catch(() => {});
   }, [status]);
 
-  // Close mobile sidebar on route change
+  // Close mobile sidebar + user menu on route change
   useEffect(() => {
     setSidebarOpen(false);
     setUserMenuOpen(false);
@@ -223,7 +223,14 @@ export default function DashboardShell({ children }: { children: React.ReactNode
                       Billing
                     </Link>
                     <button
-                      onClick={() => signOut({ callbackUrl: "/" })}
+                      onClick={async () => {
+                        setUserMenuOpen(false);
+                        try {
+                          await signOut({ redirect: false });
+                        } finally {
+                          window.location.href = "/login";
+                        }
+                      }}
                       className="flex w-full items-center gap-2 border-t border-border/60 px-3 py-2 text-sm text-rose-600 hover:bg-rose-500/5"
                     >
                       <LogOut className="h-3.5 w-3.5" /> Sign out
