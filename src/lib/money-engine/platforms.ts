@@ -13,99 +13,50 @@ export interface PlatformConfig {
   category: ProductType;
   fields: PlatformField[];
   hint: string;
+  brands: string[];
 }
 
 export const PLATFORM_CONFIG: PlatformConfig[] = [
   {
-    id: "warriorplus",
-    name: "WarriorPlus",
-    category: "digital",
-    hint: "Sign up as an affiliate, then copy your username + API key from the dashboard.",
-    fields: [
-      { key: "affiliateUsername", label: "Affiliate Username", placeholder: "yourusername", secret: false },
-      { key: "apiKey", label: "API Key", placeholder: "wp_xxxxxxxx", secret: true },
-    ],
-  },
-  {
-    id: "jvzoo",
-    name: "JVZoo",
-    category: "digital",
-    hint: "JVZoo Affiliate → API Settings. You need both the key and secret.",
-    fields: [
-      { key: "affiliateId", label: "Affiliate ID", placeholder: "12345", secret: false },
-      { key: "apiKey", label: "API Key", placeholder: "jvz_xxxxxxxx", secret: true },
-      { key: "apiSecret", label: "API Secret", placeholder: "••••••", secret: true },
-    ],
-  },
-  {
     id: "impact",
     name: "Impact.com",
     category: "digital",
-    hint: "Account SID → Settings → API. Token is the Mediapartners token.",
+    hint:
+      "One Impact account carries 30+ brands — Jumia NG, AliExpress, Walmart, Adidas, Shopify, Canva, Semrush, Hostinger, NordVPN, Konga and more. Get credentials from Settings → API.",
     fields: [
       { key: "accountId", label: "Account SID", placeholder: "1234567", secret: false },
-      { key: "accessToken", label: "Bearer Token", placeholder: "••••••", secret: true },
+      { key: "accessToken", label: "Auth Token", placeholder: "••••••", secret: true },
+    ],
+    brands: [
+      "Jumia NG", "Konga", "AliExpress", "Walmart", "Adidas", "Levi's",
+      "StockX", "Etsy", "Fanatics", "Lenovo", "Nike", "eBay",
+      "Shopify", "Canva", "Semrush", "Hostinger", "NordVPN", "Norton",
+      "Bitdefender", "Wondershare", "EaseUS", "AppSumo", "Skillshare",
+      "Airbnb", "Booking.com", "TripAdvisor", "Ticketmaster", "Uber",
+      "L'Oréal", "Glossier",
     ],
   },
   {
     id: "partnerstack",
     name: "PartnerStack",
     category: "digital",
-    hint: "Partner dashboard → API Keys → generate a public + secret pair.",
+    hint:
+      "One PartnerStack account carries 20+ SaaS programs — Monday.com, HubSpot, Slack, Webflow, Asana, Notion, Jasper AI, Typeform and more. Most programs pay recurring.",
     fields: [
       { key: "apiKey", label: "Public Key", placeholder: "pk_live_...", secret: true },
       { key: "apiSecret", label: "Secret Key", placeholder: "••••••", secret: true },
+      { key: "affiliateId", label: "Partner ID", placeholder: "partner_12345", secret: false },
     ],
-  },
-  {
-    id: "temu",
-    name: "Temu Affiliate",
-    category: "physical",
-    hint: "affiliate.temu.com → API Access. Approval can take 1–3 weeks.",
-    fields: [
-      { key: "apiKey", label: "App Key", placeholder: "tm_xxxxxxxx", secret: true },
-      { key: "apiSecret", label: "App Secret", placeholder: "••••••", secret: true },
-    ],
-  },
-  {
-    id: "aliexpress",
-    name: "AliExpress Portals",
-    category: "physical",
-    hint: "portals.aliexpress.com → API. App key + secret, business info required.",
-    fields: [
-      { key: "apiKey", label: "App Key", placeholder: "ALI_xxxxxxxx", secret: true },
-      { key: "apiSecret", label: "App Secret", placeholder: "••••••", secret: true },
-    ],
-  },
-  {
-    id: "jumia",
-    name: "Jumia (via Impact)",
-    category: "physical",
-    hint: "Uses the same Impact.com credentials — campaign name must be 'Jumia NG'.",
-    fields: [
-      { key: "accountId", label: "Account SID", placeholder: "1234567", secret: false },
-      { key: "accessToken", label: "Bearer Token", placeholder: "••••••", secret: true },
-    ],
-  },
-  {
-    id: "konga",
-    name: "Konga (via Impact)",
-    category: "physical",
-    hint: "Uses the same Impact.com credentials — campaign name must be 'Konga'.",
-    fields: [
-      { key: "accountId", label: "Account SID", placeholder: "1234567", secret: false },
-      { key: "accessToken", label: "Bearer Token", placeholder: "••••••", secret: true },
+    brands: [
+      "Monday.com", "HubSpot", "Slack", "Webflow", "Asana", "Typeform",
+      "Mailchimp", "Freshbooks", "Unbounce", "Loom", "ActiveCampaign",
+      "ClickUp", "Calendly", "Pipedrive", "Intercom", "ZoomInfo",
+      "ConvertKit", "Notion", "Grammarly", "Jasper AI",
     ],
   },
 ];
 
 export const REQUIRED_FIELDS: Record<PlatformId, PlatformField["key"][]> = {
-  warriorplus: ["affiliateUsername", "apiKey"],
-  jvzoo: ["affiliateId", "apiKey", "apiSecret"],
   impact: ["accountId", "accessToken"],
-  partnerstack: ["apiKey", "apiSecret"],
-  temu: ["apiKey", "apiSecret"],
-  aliexpress: ["apiKey", "apiSecret"],
-  jumia: ["accountId", "accessToken"],
-  konga: ["accountId", "accessToken"],
+  partnerstack: ["apiKey", "apiSecret", "affiliateId"],
 };

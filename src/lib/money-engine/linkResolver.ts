@@ -9,12 +9,16 @@ import { prisma } from "@/lib/prisma";
  *
  * Security:
  * - Never returns the raw affiliate link to the frontend — the caller
- *   wraps it in a cloaked /api/r/[postId] link instead.
+ *   wraps it in a cloaked /go/{slug} link (Phase 3) instead.
  * - All API keys are decrypted here only, never logged or exposed.
  */
 export async function getPersonalAffiliateLink(
   userId: string,
-  offer: { platform: string; offerId: string; affiliateLinkTemplate?: string | null }
+  offer: {
+    platform: string;
+    offerId: string;
+    affiliateLinkTemplate?: string | null;
+  }
 ): Promise<string> {
   const account = await prisma.userAffiliateAccount.findUnique({
     where: { userId_platform: { userId, platform: offer.platform } },
@@ -25,26 +29,24 @@ export async function getPersonalAffiliateLink(
   }
 
   // ─── Phase 2 — real platform clients go here ───
-  // Each case will decrypt the required key, call the platform API,
-  // and return the generated link. For now, every case throws a
-  // clear NOT_IMPLEMENTED error so nothing breaks silently.
 
   switch (offer.platform) {
-    case "warriorplus":
-      // Phase 2: GET https://warriorplus.com/api/v1/links?offer_id=...&aff=...
-      throw new Error("NOT_IMPLEMENTED:warriorplus");
-    case "jvzoo":
-      throw new Error("NOT_IMPLEMENTED:jvzoo");
     case "impact":
-    case "jumia":
-    case "konga":
-      throw new Error(`NOT_IMPLEMENTED:${offer.platform}`);
+      // Phase 2:
+      //   decrypt account.accessTokenEncrypted + account.accountId
+      //   POST https://api.impact.com/Mediapartners/{accountId}/Campaigns/{offerId}/TrackingLinks
+      //   Body: { SubId1: userId }  (for click attribution)
+      //   Return the TrackingURL from the response.
+      throw new Error("NOT_IMPLEMENTED:impact");
+
     case "partnerstack":
+      // Phase 2:
+      //   decrypt account.apiKeyEncrypted + account.apiSecretEncrypted
+      //   POST https://api.partnerstack.com/api/v2/links
+      //   Body: { offer_id: offerId, partner_id: account.affiliateId, customer_id: userId }
+      //   Return the url from the response.
       throw new Error("NOT_IMPLEMENTED:partnerstack");
-    case "temu":
-      throw new Error("NOT_IMPLEMENTED:temu");
-    case "aliexpress":
-      throw new Error("NOT_IMPLEMENTED:aliexpress");
+
     default:
       throw new Error(`UNKNOWN_PLATFORM:${offer.platform}`);
   }

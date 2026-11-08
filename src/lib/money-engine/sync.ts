@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import type { PlatformId, ProductType, RawOffer, SyncResult } from "./types";
 import {
   passesDigitalFilter,
@@ -7,39 +8,23 @@ import {
 import { MOCK_DIGITAL, MOCK_PHYSICAL } from "./mockData";
 
 /**
- * Phase 1: fetches mock data whenever the platform's API key is absent.
- * Phase 2: real fetchers replace the `fetchMock*` calls below.
- *
- * Whatever the source, the output goes through:
- *   1. keep-filter (Part 4 of spec)
- *   2. scoring
- *   3. Prisma upsert (deduped by platform + offerId)
+ * Only two networks per Final Clean Build v2 spec.
+ * Jumia, AliExpress, Walmart, Adidas, Konga = brands inside Impact.
+ * Monday, HubSpot, Slack, Webflow = brands inside PartnerStack.
  */
-
-const DIGITAL_PLATFORMS: PlatformId[] = [
-  "warriorplus",
-  "jvzoo",
-  "impact",
-  "partnerstack",
-];
-const PHYSICAL_PLATFORMS: PlatformId[] = [
-  "temu",
-  "aliexpress",
-  "jumia",
-  "konga",
-];
+const DIGITAL_PLATFORMS: PlatformId[] = ["impact", "partnerstack"];
+const PHYSICAL_PLATFORMS: PlatformId[] = ["impact"];
 
 function hasKey(platform: PlatformId): boolean {
-  switch (platform) {
-    case "warriorplus": return Boolean(process.env.WARRIORPLUS_API_KEY);
-    case "jvzoo": return Boolean(process.env.JVZOO_API_KEY && process.env.JVZOO_SECRET);
-    case "impact": return Boolean(process.env.IMPACT_TOKEN && process.env.IMPACT_ACCOUNT_ID);
-    case "partnerstack": return Boolean(process.env.PARTNERSTACK_PUBLIC_KEY && process.env.PARTNERSTACK_SECRET_KEY);
-    case "temu": return Boolean(process.env.TEMU_AFFILIATE_KEY && process.env.TEMU_AFFILIATE_SECRET);
-    case "aliexpress": return Boolean(process.env.ALIEXPRESS_APP_KEY && process.env.ALIEXPRESS_APP_SECRET);
-    case "jumia": return Boolean(process.env.IMPACT_TOKEN); // Jumia via Impact
-    case "konga": return Boolean(process.env.IMPACT_TOKEN); // Konga via Impact
+  if (platform === "impact") {
+    return Boolean(process.env.IMPACT_TOKEN && process.env.IMPACT_ACCOUNT_ID);
   }
+  if (platform === "partnerstack") {
+    return Boolean(
+      process.env.PARTNERSTACK_PUBLIC_KEY && process.env.PARTNERSTACK_SECRET_KEY
+    );
+  }
+  return false;
 }
 
 async function fetchForPlatform(
@@ -47,10 +32,9 @@ async function fetchForPlatform(
   productType: ProductType
 ): Promise<{ offers: RawOffer[]; mock: boolean }> {
   if (!hasKey(platform)) {
-    // Mock fallback — spec Part 8 requires this.
+    // Mock fallback — spec §8 requires the demo dashboard to work with no keys.
     const pool = productType === "digital" ? MOCK_DIGITAL : MOCK_PHYSICAL;
     const filtered = pool.filter((o) => o.platform === platform);
-    // If we don't have a mock for this exact platform, return a rotating slice
     const offers =
       filtered.length > 0
         ? filtered
@@ -59,9 +43,17 @@ async function fetchForPlatform(
   }
 
   // ─── Phase 2 — real platform fetchers go here ───
-  // Each block decrypts its API key, calls the platform endpoint,
-  // normalizes into RawOffer[], and returns. Throws are caught by
-  // the caller and recorded in failedSources.
+  // Impact:
+  //   GET https://api.impact.com/Mediapartners/{ACCOUNT_ID}/Campaigns
+  //   Auth: Basic base64(SID:TOKEN)
+  //   Map campaigns → RawOffer[] (Jumia, Konga, Walmart, Adidas, etc.)
+  //
+  // PartnerStack:
+  //   GET https://api.partnerstack.com/api/v2/offers
+  //   Auth: Bearer PARTNERSTACK_API_KEY, X-Partner-Id header
+  //   Map offers → RawOffer[] (Monday, HubSpot, Notion, etc.)
+  //
+  // Both return normalized RawOffer[] — the caller handles filtering + scoring.
   throw new Error(`NOT_IMPLEMENTED:${platform}:fetch`);
 }
 
@@ -73,12 +65,13 @@ async function syncOne(
     const { offers, mock } = await fetchForPlatform(platform, productType);
 
     const passing = offers.filter((o) =>
-      productType === "digital" ? passesDigitalFilter(o) : passesPhysicalFilter(o)
+      productType === "digital"
+        ? passesDigitalFilter(o)
+        : passesPhysicalFilter(o)
     );
 
     const scored = passing.map(scoreOffer);
 
-    // Upsert each offer — deduped by (platform, offerId)
     for (const o of scored) {
       const data = {
         productType: o.productType,
@@ -112,7 +105,9 @@ async function syncOne(
         lastSyncedAt: new Date(),
       };
       await prisma.moneyEngineOffer.upsert({
-        where: { platform_offerId: { platform: o.platform, offerId: o.offerId } },
+        where: {
+          platform_offerId: { platform: o.platform, offerId: o.offerId },
+        },
         create: data,
         update: data,
       });
@@ -153,6 +148,3 @@ export async function syncAll(): Promise<{
     totalFetched: results.reduce((s, r) => s + r.fetched, 0),
   };
 }
-
-// Prisma singleton is imported implicitly via the top-level import
-import { prisma } from "@/lib/prisma";

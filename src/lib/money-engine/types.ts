@@ -1,14 +1,9 @@
 export type ProductType = "digital" | "physical";
 
-export type PlatformId =
-  | "warriorplus"
-  | "jvzoo"
-  | "impact"
-  | "partnerstack"
-  | "temu"
-  | "aliexpress"
-  | "jumia"
-  | "konga";
+// Only 2 networks per Final Clean Build v2 spec.
+// Jumia, AliExpress, Walmart, Konga, Adidas = brands inside Impact.
+// Monday, HubSpot, Webflow, Notion = brands inside PartnerStack.
+export type PlatformId = "impact" | "partnerstack";
 
 export type TrafficModule = "tiktok" | "facebook" | "x" | "youtube";
 

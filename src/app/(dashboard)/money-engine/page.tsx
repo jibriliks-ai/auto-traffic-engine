@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import {
   Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
-  Loader2, AlertTriangle, Settings, Wand2, X,
+  Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock,
 } from "lucide-react";
 
 type Offer = {
@@ -35,6 +36,7 @@ const TABS = [
 const MODULES = ["tiktok", "facebook", "x", "youtube"] as const;
 
 export default function MoneyEnginePage() {
+  const { data: session, status } = useSession();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [tab, setTab] = useState<"all" | "digital" | "physical">("all");
@@ -44,6 +46,10 @@ export default function MoneyEnginePage() {
   const [generating, setGenerating] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<GeneratedPost[] | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+
+  const plan = (session?.user as any)?.plan ?? "free";
+  const isAdmin = (session?.user as any)?.isAdmin === true;
+  const isUnlocked = isAdmin || plan === "premium";
 
   async function load() {
     setLoading(true);
@@ -96,7 +102,23 @@ export default function MoneyEnginePage() {
     }
   }
 
-  useEffect(() => { load(); }, [tab]);
+  useEffect(() => {
+    if (status === "authenticated" && isUnlocked) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, status, isUnlocked]);
+
+  if (status === "loading") {
+    return (
+      <div className="grid place-items-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // ─── PREMIUM GATE ───
+  if (!isUnlocked) {
+    return <UpgradeGate />;
+  }
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -104,7 +126,7 @@ export default function MoneyEnginePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Auto Money Engine</h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-            Personalized offers from 8 affiliate networks — digital + physical.
+            2 networks · 50+ brands. Impact.com + PartnerStack, all in one dashboard.
           </p>
         </div>
         <div className="flex gap-2">
@@ -154,7 +176,7 @@ export default function MoneyEnginePage() {
           </div>
         ) : offers.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            No offers yet. Click <strong>Load Demo Offers</strong>.
+            No offers yet. Click <strong>Load Demo Offers</strong> to preview 10 mock offers across Impact + PartnerStack.
           </div>
         ) : (
           <div className="divide-y divide-border/60">
@@ -167,10 +189,10 @@ export default function MoneyEnginePage() {
                     <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
                       o.productType === "digital" ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                     }`}>{o.productType}</span>
-                    <span className="text-xs text-muted-foreground">{o.platform}</span>
+                    <span className="text-xs text-muted-foreground uppercase">{o.platform}</span>
                     {o.isRecurring && (
                       <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
-                        Recurring
+                        🔁 Recurring
                       </span>
                     )}
                     {o.priority === "high" && (
@@ -212,7 +234,10 @@ export default function MoneyEnginePage() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Connect a platform in <Link href="/money-engine/settings" className="text-primary underline">Settings</Link> to unlock personalized affiliate links. Until then, generated posts are saved as drafts with link status "PENDING_CONNECTION".
+        Connect Impact.com or PartnerStack in{" "}
+        <Link href="/money-engine/settings" className="text-primary underline">Settings</Link>{" "}
+        to sync 50+ real brands. Until then, demo offers are used and generated drafts save with link status{" "}
+        <code className="rounded bg-muted px-1">PENDING_CONNECTION</code>.
       </p>
 
       {draftError && (
@@ -260,6 +285,58 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
         {label}
       </div>
       <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
+    </div>
+  );
+}
+
+function UpgradeGate() {
+  return (
+    <div className="space-y-6">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/10 via-card to-purple-500/10 p-8 text-center sm:p-12">
+        <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary/20 text-primary">
+          <Lock className="h-8 w-8" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          Auto Money Engine — Premium
+        </h1>
+        <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
+          Connect Impact.com and PartnerStack once. Pull 50+ real brands — Jumia, AliExpress, Walmart,
+          Adidas, Shopify, Canva, Monday.com, HubSpot, Notion — and auto-generate video, poster, and Q&A
+          content to promote them.
+        </p>
+
+        <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border/60 bg-card p-5 text-left">
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold">$35</span>
+            <span className="text-sm text-muted-foreground">/month</span>
+          </div>
+          <div className="mt-3 space-y-2 text-sm">
+            {[
+              "Auto Money Engine — 50+ brands from Impact + PartnerStack",
+              "Unlimited Q&A Finder searches",
+              "Unlimited URL indexing",
+              "Unlimited videos",
+              "Unlimited social posts",
+              "Up to 3 businesses",
+            ].map((f) => (
+              <div key={f} className="flex items-start gap-2">
+                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                <span>{f}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <Link
+          href="/billing"
+          className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          <Crown className="h-4 w-4" /> Upgrade to Premium — $35/mo
+        </Link>
+        <p className="mt-4 text-xs text-muted-foreground">
+          One fee unlocks every premium module. Cancel anytime.
+        </p>
+      </div>
     </div>
   );
 }
