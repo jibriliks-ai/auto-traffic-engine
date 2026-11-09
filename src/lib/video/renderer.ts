@@ -6,9 +6,18 @@ import fsSync from "fs";
 import path from "path";
 import os from "os";
 
-const WIDTH = 1080;
-const HEIGHT = 1920;
-const FPS = 30;
+/**
+ * FAST_MODE = true  → 720p @ 24fps, no Ken Burns zoom. ~3-8s per render.
+ * FAST_MODE = false → 1080p @ 30fps, Ken Burns zoom. ~30-60s per render.
+ *
+ * Flip to false only on Render Starter ($7/mo) or a plan with real CPU.
+ * On free tier, FAST_MODE=true is the difference between "usable" and "abandoned".
+ */
+const FAST_MODE = true;
+
+const WIDTH = FAST_MODE ? 720 : 1080;
+const HEIGHT = FAST_MODE ? 1280 : 1920;
+const FPS = FAST_MODE ? 24 : 30;
 const DURATION = 20;
 
 export interface RenderInput {
@@ -26,30 +35,20 @@ export interface RenderOutput {
   durationSeconds: number;
 }
 
-/**
- * Resolve the real FFmpeg binary path.
- * On Render, Next.js's bundling rewrites ffmpeg-static's export to a path
- * inside .next/server/... which doesn't exist. We walk the filesystem from
- * process.cwd() to find the actual binary in node_modules.
- */
 function resolveFfmpegPath(): string {
   const candidates: string[] = [];
-
   try {
     const resolvedPkg = require.resolve("ffmpeg-static");
     const pkgDir = path.dirname(resolvedPkg);
     candidates.push(path.join(pkgDir, "ffmpeg"));
     candidates.push(path.join(pkgDir, "ffmpeg.exe"));
   } catch {}
-
   const cwdRoot = process.cwd();
   candidates.push(path.join(cwdRoot, "node_modules", "ffmpeg-static", "ffmpeg"));
   candidates.push(path.join(cwdRoot, "node_modules", "ffmpeg-static", "ffmpeg.exe"));
   candidates.push(path.join(cwdRoot, "..", "node_modules", "ffmpeg-static", "ffmpeg"));
   candidates.push(path.join(cwdRoot, "..", "..", "node_modules", "ffmpeg-static", "ffmpeg"));
-
   if (ffmpegStatic) candidates.push(String(ffmpegStatic));
-
   for (const candidate of candidates) {
     try {
       if (candidate && fsSync.existsSync(candidate)) {
@@ -58,7 +57,6 @@ function resolveFfmpegPath(): string {
       }
     } catch {}
   }
-
   throw new Error(
     `FFmpeg binary not found. Tried:\n${candidates.join("\n")}\ncwd=${process.cwd()}`
   );
@@ -66,7 +64,7 @@ function resolveFfmpegPath(): string {
 
 const FFMPEG = resolveFfmpegPath();
 
-function runFFmpeg(args: string[], timeoutMs = 150_000): Promise<void> {
+function runFFmpeg(args: string[], timeoutMs = 120_000): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!FFMPEG) return reject(new Error("FFmpeg binary not found"));
     const proc = spawn(FFMPEG, args, { stdio: ["ignore", "ignore", "pipe"] });
@@ -151,9 +149,11 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
   try {
     const imgBuffer = await loadImageBuffer(input.productImageUrl);
 
+    // Downscale before sharp processing to save cycles
+    const blurRadius = FAST_MODE ? 25 : 45;
     const blurred = await sharp(imgBuffer)
       .resize(WIDTH, HEIGHT, { fit: "cover" })
-      .blur(45)
+      .blur(blurRadius)
       .modulate({ brightness: 0.55 })
       .toBuffer();
     const centered = await sharp(imgBuffer)
@@ -161,61 +161,73 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
       .toBuffer();
     await sharp(blurred)
       .composite([{ input: centered, top: 0, left: 0 }])
-      .jpeg({ quality: 92 })
+      .jpeg({ quality: 88 })
       .toFile(basePath);
 
-    const titleLines = wrap(input.title, 22);
-    const titleSvg = `<svg width="${WIDTH}" height="520" xmlns="http://www.w3.org/2000/svg">
+    const titleFontSize = FAST_MODE ? 56 : 82;
+    const titleLineHeight = FAST_MODE ? 70 : 100;
+    const titleLines = wrap(input.title, FAST_MODE ? 24 : 22);
+    const titleSvg = `<svg width="${WIDTH}" height="${FAST_MODE ? 360 : 520}" xmlns="http://www.w3.org/2000/svg">
       <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="rgba(0,0,0,0.85)"/>
         <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
       </linearGradient></defs>
-      <rect width="${WIDTH}" height="520" fill="url(#g)"/>
+      <rect width="${WIDTH}" height="${FAST_MODE ? 360 : 520}" fill="url(#g)"/>
       ${titleLines
         .map(
           (l, i) =>
-            `<text x="${WIDTH / 2}" y="${140 + i * 100}" font-family="Arial,Helvetica,sans-serif" font-size="82" font-weight="900" fill="white" text-anchor="middle" letter-spacing="1">${esc(l)}</text>`
+            `<text x="${WIDTH / 2}" y="${(FAST_MODE ? 100 : 140) + i * titleLineHeight}" font-family="Arial,Helvetica,sans-serif" font-size="${titleFontSize}" font-weight="900" fill="white" text-anchor="middle" letter-spacing="1">${esc(l)}</text>`
         )
         .join("")}
     </svg>`;
-    await sharp(Buffer.from(titleSvg)).png().toFile(topPath);
+    await sharp(Buffer.from(titleSvg)).png({ compressionLevel: 1 }).toFile(topPath);
 
-    const priceSvg = `<svg width="${WIDTH}" height="320" xmlns="http://www.w3.org/2000/svg">
-      <rect x="50" y="60" width="${WIDTH - 100}" height="200" rx="28" fill="${esc(input.brandColor)}"/>
-      <text x="${WIDTH / 2}" y="210" font-family="Arial,Helvetica,sans-serif" font-size="104" font-weight="900" fill="white" text-anchor="middle">${esc(input.priceText || " ")}</text>
+    const priceHeight = FAST_MODE ? 220 : 320;
+    const priceFontSize = FAST_MODE ? 72 : 104;
+    const pricePillHeight = FAST_MODE ? 140 : 200;
+    const priceSvg = `<svg width="${WIDTH}" height="${priceHeight}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="40" y="40" width="${WIDTH - 80}" height="${pricePillHeight}" rx="24" fill="${esc(input.brandColor)}"/>
+      <text x="${WIDTH / 2}" y="${40 + pricePillHeight / 2 + priceFontSize / 3}" font-family="Arial,Helvetica,sans-serif" font-size="${priceFontSize}" font-weight="900" fill="white" text-anchor="middle">${esc(input.priceText || " ")}</text>
     </svg>`;
-    await sharp(Buffer.from(priceSvg)).png().toFile(midPath);
+    await sharp(Buffer.from(priceSvg)).png({ compressionLevel: 1 }).toFile(midPath);
 
-    const ctaLines = wrap(input.ctaText, 24);
-    const ctaSvg = `<svg width="${WIDTH}" height="480" xmlns="http://www.w3.org/2000/svg">
+    const ctaHeight = FAST_MODE ? 340 : 480;
+    const ctaFontSize = FAST_MODE ? 62 : 90;
+    const ctaLineHeight = FAST_MODE ? 72 : 100;
+    const ctaLines = wrap(input.ctaText, FAST_MODE ? 26 : 24);
+    const ctaSvg = `<svg width="${WIDTH}" height="${ctaHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs><linearGradient id="g" x1="0" y1="1" x2="0" y2="0">
         <stop offset="0%" stop-color="rgba(0,0,0,0.92)"/>
         <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
       </linearGradient></defs>
-      <rect width="${WIDTH}" height="480" fill="url(#g)"/>
+      <rect width="${WIDTH}" height="${ctaHeight}" fill="url(#g)"/>
       ${ctaLines
         .map(
           (l, i) =>
-            `<text x="${WIDTH / 2}" y="${300 + i * 100}" font-family="Arial,Helvetica,sans-serif" font-size="90" font-weight="900" fill="white" text-anchor="middle">${esc(l)}</text>`
+            `<text x="${WIDTH / 2}" y="${(FAST_MODE ? 210 : 300) + i * ctaLineHeight}" font-family="Arial,Helvetica,sans-serif" font-size="${ctaFontSize}" font-weight="900" fill="white" text-anchor="middle">${esc(l)}</text>`
         )
         .join("")}
     </svg>`;
-    await sharp(Buffer.from(ctaSvg)).png().toFile(ctaPath);
+    await sharp(Buffer.from(ctaSvg)).png({ compressionLevel: 1 }).toFile(ctaPath);
+
+    const priceY = Math.floor(HEIGHT * 0.35);
+    const ctaY = HEIGHT - ctaHeight;
 
     // ── FILTER CHAIN ──
-    // 0 = base (Ken Burns zoom 1.0 → 1.08 over 20s)
-    // 1 = title (fade in 0-1s)
-    // 2 = price (fade in 0.5-1.5s)
-    // 3 = CTA (fade in 15-16.5s)
-    const totalFrames = FPS * DURATION;
+    // FAST_MODE: static base + fade-ins only → 3-8s render
+    // Slow mode: Ken Burns zoompan → 30-60s render but smoother
+    const baseFilter = FAST_MODE
+      ? `[0:v]scale=${WIDTH}:${HEIGHT},setsar=1[bg]`
+      : `[0:v]scale=${WIDTH}:${HEIGHT},zoompan=z='1+0.08*on/${FPS * DURATION}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${WIDTH}x${HEIGHT}:fps=${FPS}[bg]`;
+
     const filter =
-      `[0:v]scale=${WIDTH}:${HEIGHT},zoompan=z='1+0.08*on/${totalFrames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${WIDTH}x${HEIGHT}:fps=${FPS}[bg];` +
+      `${baseFilter};` +
       `[1:v]format=yuva420p,fade=t=in:st=0:d=1:alpha=1[title];` +
       `[2:v]format=yuva420p,fade=t=in:st=0.5:d=1:alpha=1[price];` +
       `[3:v]format=yuva420p,fade=t=in:st=15:d=1.5:alpha=1[cta];` +
       `[bg][title]overlay=0:0[t1];` +
-      `[t1][price]overlay=0:${Math.floor(HEIGHT * 0.38)}[t2];` +
-      `[t2][cta]overlay=0:${HEIGHT - 480}[o]`;
+      `[t1][price]overlay=0:${priceY}[t2];` +
+      `[t2][cta]overlay=0:${ctaY}[o]`;
 
     const args = [
       "-loop", "1", "-framerate", String(FPS), "-t", String(DURATION), "-i", basePath,
@@ -225,10 +237,6 @@ export async function renderVideo(input: RenderInput): Promise<RenderOutput> {
       "-filter_complex", filter,
       "-map", "[o]",
       "-c:v", "libx264",
-      // ── SPEED: ultrafast preset + stillimage tune ──
-      // ultrafast skips rate-distortion optimization (~4x faster than "fast")
-      // stillimage tells x264 this is a slideshow, skips motion search (~2x faster)
-      // Combined: 5-8x faster encode with no visible quality loss on text+image content
       "-preset", "ultrafast",
       "-tune", "stillimage",
       "-crf", "23",
