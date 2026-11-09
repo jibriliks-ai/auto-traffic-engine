@@ -19,26 +19,31 @@ model User {
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
-  role             String    @default("user")     // user | admin
-  plan             String    @default("free")     // free | premium
+  role             String    @default("user") // user | admin
+  plan             String    @default("free") // free | premium
   planExpiresAt    DateTime?
-  activeBusinessId String?                        // current business for all modules
+  activeBusinessId String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  businesses     Business[]
-  submissions    Submission[]
-  videos         Video[]
-  socialAccounts SocialAccount[]
-  qaPosts        QAPost[]
-  payments       Payment[]
+  accounts            Account[]
+  sessions            Session[]
+  businesses          Business[]
+  submissions         Submission[]
+  videos              Video[]
+  socialAccounts      SocialAccount[]
+  qaPosts             QAPost[]
+  payments            Payment[]
   passwordResetTokens PasswordResetToken[]
-  affiliateAccounts UserAffiliateAccount[]
-  moneyEnginePosts  MoneyEnginePost[]
-  moneyEngineClicks MoneyEngineClick[]
-  moneyEngineSales  MoneyEngineSale[]
+  affiliateAccounts   UserAffiliateAccount[]
+  moneyEnginePosts    MoneyEnginePost[]
+  moneyEngineClicks   MoneyEngineClick[]
+  moneyEngineSales    MoneyEngineSale[]
+
+  // ── Link cloaker + Link-to-Video (added for Video Engine v4) ──
+  moneyEngineLinks      MoneyEngineLink[]
+  moneyEngineLinkClicks MoneyEngineLinkClick[]
+  linkToVideoJobs       LinkToVideoJob[]
 }
 
 model Account {
@@ -76,7 +81,7 @@ model VerificationToken {
 }
 
 // ============================================================
-// BUSINESS (every module targets the active business)
+// BUSINESS
 // ============================================================
 
 model Business {
@@ -102,7 +107,7 @@ model Submission {
   id           String    @id @default(cuid())
   userId       String
   businessId   String?
-  type         String    // qa | classified | indexer | social | video
+  type         String // qa | classified | indexer | social | video
   platform     String
   url          String
   submittedUrl String
@@ -118,18 +123,19 @@ model Submission {
 }
 
 model Video {
-  id                String    @id @default(cuid())
-  userId            String
-  businessId        String?
-  url               String
-  thumbnail         String?
-  platform          String    @default("tiktok")
-  status            String    @default("pending")
-  title             String?
-  createdAt         DateTime  @default(now())
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  businessId String?
+  url        String
+  thumbnail  String?
+  platform   String   @default("tiktok")
+  status     String   @default("pending") // pending | rendering | done | failed
+  title      String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  template          String    @default("product_promo")
+  // ── Video Engine v4 fields ──
+  template          String    @default("remotion_professional")
   script            String?   @db.Text
   productImageUrl   String?   @db.Text
   priceText         String?
@@ -148,11 +154,11 @@ model Video {
 model SocialAccount {
   id           String    @id @default(cuid())
   userId       String
-  provider     String    // facebook | twitter
+  provider     String // facebook | twitter | tiktok | youtube
   accountId    String
   accountName  String?
   accessToken  String
-  pages        String?   // JSON string (portable across SQLite/Postgres)
+  pages        String? // JSON string
   dailyCount   Int       @default(0)
   lastPostDate DateTime?
   createdAt    DateTime  @default(now())
@@ -162,7 +168,7 @@ model SocialAccount {
 }
 
 // ============================================================
-// Q&A CLONE (public Reddit/Lemmy-style feed with FAQ schema)
+// Q&A CLONE
 // ============================================================
 
 model QAPost {
@@ -185,7 +191,7 @@ model QAPost {
 }
 
 // ============================================================
-// BILLING (Flutterwave)
+// BILLING
 // ============================================================
 
 model Payment {
@@ -194,7 +200,7 @@ model Payment {
   reference String    @unique
   amount    Int
   currency  String    @default("NGN")
-  status    String    @default("pending")   // pending | success | failed
+  status    String    @default("pending") // pending | success | failed
   plan      String    @default("premium")
   channel   String?
   createdAt DateTime  @default(now())
@@ -204,6 +210,7 @@ model Payment {
   @@index([userId])
   @@index([status])
 }
+
 model PasswordResetToken {
   id        String    @id @default(cuid())
   userId    String
@@ -216,6 +223,7 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expires])
 }
+
 // ═══════════════════════════════════════════════════════════
 // AUTO MONEY ENGINE — v2.0
 // ═══════════════════════════════════════════════════════════
@@ -223,7 +231,7 @@ model PasswordResetToken {
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
-  platform              String    // 'warriorplus','jvzoo','impact','partnerstack','temu','aliexpress','jumia','konga'
+  platform              String // 'impact' | 'partnerstack' (only 2 supported)
   affiliateUsername     String?
   affiliateId           String?
   apiKeyEncrypted       String?   @db.Text
@@ -242,37 +250,37 @@ model UserAffiliateAccount {
 }
 
 model MoneyEngineOffer {
-  id                  String    @id @default(cuid())
-  productType         String    // 'digital' | 'physical'
-  platform            String
-  offerId             String
-  title               String
-  vendor              String?
-  category            String?
-  frontEndPrice       Decimal?  @db.Decimal(10, 2)
-  originalPrice       Decimal?  @db.Decimal(10, 2)
-  funnelMaxPrice      Decimal?  @db.Decimal(10, 2)
-  commissionPct       Decimal?  @db.Decimal(5, 2)
-  commissionAmount    Decimal?  @db.Decimal(10, 2)
-  commissionType      String    @default("CPS")
-  epc                 Decimal   @default(0) @db.Decimal(10, 2)
-  conversionRate      Decimal   @default(0) @db.Decimal(5, 2)
-  gravity             Decimal   @default(0) @db.Decimal(10, 2)
-  refundRate          Decimal   @default(0) @db.Decimal(5, 2)
-  orders7days         Int       @default(0)
-  rating              Decimal   @default(0) @db.Decimal(3, 2)
-  isRecurring         Boolean   @default(false)
-  recurringMonths     Int       @default(0)
-  salesPageUrl        String?   @db.Text
-  imageUrl            String?   @db.Text
-  videoUrl            String?   @db.Text
-  affiliateLinkTemplate String? @db.Text
-  swipeCopy           String?   @db.Text
-  status              String    @default("active") // 'active' | 'paused' | 'dead'
-  score               Decimal   @default(0) @db.Decimal(10, 2)
-  priority            String    @default("normal") // 'low' | 'normal' | 'high'
-  lastSyncedAt        DateTime  @default(now())
-  createdAt           DateTime  @default(now())
+  id                    String   @id @default(cuid())
+  productType           String // 'digital' | 'physical'
+  platform              String
+  offerId               String
+  title                 String
+  vendor                String?
+  category              String?
+  frontEndPrice         Decimal? @db.Decimal(10, 2)
+  originalPrice         Decimal? @db.Decimal(10, 2)
+  funnelMaxPrice        Decimal? @db.Decimal(10, 2)
+  commissionPct         Decimal? @db.Decimal(5, 2)
+  commissionAmount      Decimal? @db.Decimal(10, 2)
+  commissionType        String   @default("CPS")
+  epc                   Decimal  @default(0) @db.Decimal(10, 2)
+  conversionRate        Decimal  @default(0) @db.Decimal(5, 2)
+  gravity               Decimal  @default(0) @db.Decimal(10, 2)
+  refundRate            Decimal  @default(0) @db.Decimal(5, 2)
+  orders7days           Int      @default(0)
+  rating                Decimal  @default(0) @db.Decimal(3, 2)
+  isRecurring           Boolean  @default(false)
+  recurringMonths       Int      @default(0)
+  salesPageUrl          String?  @db.Text
+  imageUrl              String?  @db.Text
+  videoUrl              String?  @db.Text
+  affiliateLinkTemplate String?  @db.Text
+  swipeCopy             String?  @db.Text
+  status                String   @default("active")
+  score                 Decimal  @default(0) @db.Decimal(10, 2)
+  priority              String   @default("normal")
+  lastSyncedAt          DateTime @default(now())
+  createdAt             DateTime @default(now())
 
   posts  MoneyEnginePost[]
   clicks MoneyEngineClick[]
@@ -289,22 +297,22 @@ model MoneyEnginePost {
   userId        String
   offerId       String
   productType   String
-  trafficModule String    // 'tiktok' | 'facebook' | 'x' | 'youtube'
+  trafficModule String
   caption       String?   @db.Text
   script        String?   @db.Text
   videoUrl      String?   @db.Text
   affiliateLink String    @db.Text
   cloakedLink   String?   @db.Text
   utmSource     String?
-  status        String    @default("draft") // 'draft' | 'queued' | 'posted' | 'failed'
+  status        String    @default("draft")
   postedAt      DateTime?
   clicks        Int       @default(0)
   sales         Int       @default(0)
   commission    Decimal   @default(0) @db.Decimal(10, 2)
   createdAt     DateTime  @default(now())
 
-  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer  MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer     MoneyEngineOffer   @relation(fields: [offerId], references: [id], onDelete: Cascade)
   clicksRel MoneyEngineClick[]
   salesRel  MoneyEngineSale[]
 
@@ -343,9 +351,88 @@ model MoneyEngineSale {
   status           String   @default("pending")
   createdAt        DateTime @default(now())
 
-  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  post  MoneyEnginePost?  @relation(fields: [postId], references: [id], onDelete: SetNull)
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer MoneyEngineOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  post  MoneyEnginePost? @relation(fields: [postId], references: [id], onDelete: SetNull)
 
   @@map("money_engine_sales")
+}
+
+// ═══════════════════════════════════════════════════════════
+// LINK CLOAKER — v4 (branded /go/{slug} redirects)
+// ═══════════════════════════════════════════════════════════
+
+model MoneyEngineLink {
+  id             String   @id @default(cuid())
+  userId         String
+  offerId        String?
+  campaignId     String?
+  contentId      String?
+  slug           String   @unique
+  shortUrl       String
+  destinationUrl String   @db.Text
+  qrCodeUrl      String?  @db.Text
+  sourceType     String   @default("video") // video | poster | qa_answer | manual
+  platform       String? // tiktok | facebook | instagram | x | whatsapp
+  clicks         Int      @default(0)
+  conversions    Int      @default(0)
+  earnings       Decimal  @default(0) @db.Decimal(10, 2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clicksRel MoneyEngineLinkClick[]
+
+  @@index([userId])
+  @@index([offerId])
+  @@index([slug])
+  @@map("money_engine_links")
+}
+
+model MoneyEngineLinkClick {
+  id        String   @id @default(cuid())
+  linkId    String
+  userId    String
+  ipAddress String?
+  userAgent String?  @db.Text
+  referrer  String?  @db.Text
+  country   String?
+  platform  String?
+  clickedAt DateTime @default(now())
+
+  link MoneyEngineLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([linkId])
+  @@map("money_engine_link_clicks")
+}
+
+// ═══════════════════════════════════════════════════════════
+// LINK TO VIDEO — v4 (paste any URL → AI video)
+// ═══════════════════════════════════════════════════════════
+
+model LinkToVideoJob {
+  id            String   @id @default(cuid())
+  userId        String
+  originalUrl   String   @db.Text
+  store         String? // jumia | konga | aliexpress | amazon | shopify | etsy | walmart | unknown
+  productName   String?
+  price         Decimal? @db.Decimal(10, 2)
+  originalPrice Decimal? @db.Decimal(10, 2)
+  currency      String   @default("NGN")
+  images        String?  @db.Text // JSON array
+  description   String?  @db.Text
+  affiliateUrl  String?  @db.Text
+  shortUrl      String?
+  status        String   @default("scraping") // scraping | generating | done | failed
+  errorMessage  String?  @db.Text
+  videoUrl      String?  @db.Text
+  posterUrl     String?  @db.Text
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("link_to_video_jobs")
 }
