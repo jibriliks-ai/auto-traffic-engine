@@ -15,6 +15,17 @@ import { renderRemotionVideo } from "@/lib/video/remotionRenderer";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+/**
+ * POST /api/video/generate
+ *
+ * Body: { url?: string, offerId?: string }
+ *
+ * Creates a Video row and kicks off the render pipeline:
+ *   scrape → AI script → cloaked link → QR → Remotion render → save
+ *
+ * Returns immediately with { id, status: "rendering" }.
+ * Client polls /api/video/status/[id] until status is "done" or "failed".
+ */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
@@ -87,6 +98,7 @@ export async function POST(req: Request) {
     data: { url: `/api/video/download/${video.id}` },
   });
 
+  // Fire-and-forget — the full pipeline runs after the HTTP response is sent
   runPipeline({
     userId,
     videoId: video.id,
@@ -111,9 +123,10 @@ export async function POST(req: Request) {
           renderCompletedAt: new Date(),
         },
       });
+      console.log(`[video] ${video.id} rendered successfully`);
     })
     .catch(async (err) => {
-      console.error(`[video] Pipeline failed: ${err?.message ?? err}`);
+      console.error(`[video] Pipeline failed for ${video.id}:`, err?.message ?? err);
       await prisma.video
         .update({
           where: { id: video.id },
@@ -129,6 +142,10 @@ export async function POST(req: Request) {
   return NextResponse.json({ id: video.id, status: "rendering" });
 }
 
+// ─────────────────────────────────────────────────────────────
+// Pipeline: scrape → AI script → cloaked link → QR → Remotion
+// ─────────────────────────────────────────────────────────────
+
 interface PipelineArgs {
   userId: string;
   videoId: string;
@@ -137,10 +154,22 @@ interface PipelineArgs {
   offerRow: any | null;
 }
 
-async function runPipeline(args: PipelineArgs) {
+interface PipelineResult {
+  title: string;
+  script: string;
+  productImage: string;
+  priceText: string;
+  cta: string;
+  brandColor: string;
+  filePath: string;
+  fileSizeBytes: number;
+}
+
+async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   const workDir = path.join(os.tmpdir(), `video-${args.videoId}`);
   await fs.mkdir(workDir, { recursive: true });
 
+  // ── 1. Get product data (from offer row if present, else scrape) ──
   let productTitle: string;
   let productImage: string;
   let productPrice: string;
@@ -163,7 +192,7 @@ async function runPipeline(args: PipelineArgs) {
     const scraped = await scrapeUrl(args.productUrl);
     if (!scraped.imageUrl) {
       throw new Error(
-        "No product image found at this URL. Try a specific product page."
+        "No product image found at this URL. Try a specific product page (not a homepage)."
       );
     }
     productTitle = scraped.title;
@@ -178,6 +207,7 @@ async function runPipeline(args: PipelineArgs) {
     throw new Error("Product image could not be resolved.");
   }
 
+  // ── 2. Generate AI script (hook + 3 scenes + CTA + brand color) ──
   const script = await generateSceneScript({
     url: args.productUrl,
     title: productTitle,
@@ -187,6 +217,7 @@ async function runPipeline(args: PipelineArgs) {
     brand: productBrand,
   });
 
+  // ── 3. Create or reuse cloaked link (/go/{slug}) ──
   const link = await createOrReuseLink({
     userId: args.userId,
     offerId: args.offerId,
@@ -197,17 +228,29 @@ async function runPipeline(args: PipelineArgs) {
     productHint: productTitle.split(" ").slice(0, 3).join(" "),
   });
 
+  // ── 4. Generate QR code PNG for the cloaked link ──
   const qrPath = path.join(workDir, "qr.png");
   await generateQRFile(link.shortUrl, qrPath);
   const qrDataUrl = `data:image/png;base64,${(
     await fs.readFile(qrPath)
   ).toString("base64")}`;
 
-  const benefitList =
-    script.scenes.map((s) => s.caption).filter(Boolean).slice(0, 3).length > 0
-      ? script.scenes.map((s) => s.caption).filter(Boolean).slice(0, 3)
-      : [productTitle.slice(0, 30), "Limited time offer", "Tap link in bio"];
+  // ── 5. Prepare benefit list (fallback if AI didn't produce captions) ──
+  const captions = script.scenes
+    .map((s) => s.caption)
+    .filter((c): c is string => Boolean(c && c.trim()));
 
+  const benefitList =
+    captions.length > 0
+      ? captions.slice(0, 3)
+      : [
+          productTitle.slice(0, 30),
+          "Limited time offer",
+          "Tap the link in bio",
+        ];
+
+  // ── 6. Render via Remotion ──
+  console.log(`[video] Rendering Remotion for videoId=${args.videoId}`);
   const result = await renderRemotionVideo({
     id: args.videoId,
     productImageUrl: productImage,
@@ -220,6 +263,12 @@ async function runPipeline(args: PipelineArgs) {
     brandColor: script.brandColor || "#4f46e5",
     qrCodeUrl: qrDataUrl,
   });
+
+  console.log(
+    `[video] Render complete: ${result.filePath} (${(
+      result.fileSizeBytes / 1024 / 1024
+    ).toFixed(2)} MB)`
+  );
 
   return {
     title: script.title,

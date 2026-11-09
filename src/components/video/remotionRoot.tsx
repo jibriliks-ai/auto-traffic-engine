@@ -8,8 +8,8 @@ const RemotionRoot = () => {
       component={VideoTemplate as any}
       durationInFrames={600}
       fps={30}
-      width={1080}
-      height={1920}
+      width={720}
+      height={1280}
       defaultProps={{
         productImageUrl: "",
         productName: "",

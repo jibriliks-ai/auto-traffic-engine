@@ -70,7 +70,6 @@ function HookScene({
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          filter: "blur(30px) brightness(0.35)",
         }}
       />
       <AbsoluteFill style={{ backgroundColor: "rgba(0,0,0,0.55)" }} />
