@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Video as VideoIcon, Loader2, Upload, Download, AlertTriangle,
   Check, X, Sparkles, Film, Clock, Wand2, ExternalLink, Play,
-  Image as ImageIcon, Zap, ChevronRight,
+  Image as ImageIcon, Zap,
 } from "lucide-react";
 
 type VideoRow = {
@@ -54,6 +54,7 @@ export default function VideoCreatorPage() {
   const [autoFilling, setAutoFilling] = useState(false);
   const [preview, setPreview] = useState<SourcePreview | null>(null);
   const [sourceLabel, setSourceLabel] = useState<string | null>(null);
+  const [offerId, setOfferId] = useState<string | null>(null);
 
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -79,11 +80,18 @@ export default function VideoCreatorPage() {
 
   useEffect(() => {
     loadVideos();
+
     const params = new URLSearchParams(window.location.search);
-    const offerId = params.get("offerId");
+    const oid = params.get("offerId");
     const urlParam = params.get("url");
-    if (offerId) autoFill({ offerId });
-    else if (urlParam) { setUrlInput(urlParam); autoFill({ url: urlParam }); }
+
+    if (oid) {
+      setOfferId(oid);
+      autoFill({ offerId: oid });
+    } else if (urlParam) {
+      setUrlInput(urlParam);
+      autoFill({ url: urlParam });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,9 +146,13 @@ export default function VideoCreatorPage() {
 
   async function generate() {
     setError(null);
-    if (!title.trim()) return setError("Title is required.");
-    const productImageUrl = imageData ?? imageUrlInput.trim();
-    if (!productImageUrl) return setError("Upload a product image or paste an image URL.");
+    const url = urlInput.trim();
+    const currentOfferId =
+      offerId || new URLSearchParams(window.location.search).get("offerId");
+
+    if (!url && !currentOfferId) {
+      return setError("Paste a product URL or open from an offer.");
+    }
 
     setGenerating(true);
     setProgress(0);
@@ -149,11 +161,8 @@ export default function VideoCreatorPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: title.trim(),
-          priceText: priceText.trim(),
-          ctaText: ctaText.trim(),
-          brandColor,
-          productImageUrl,
+          url: url || undefined,
+          offerId: currentOfferId || undefined,
         }),
       });
       const data = await res.json();
@@ -163,7 +172,7 @@ export default function VideoCreatorPage() {
       const started = Date.now();
       pollRef.current = setInterval(async () => {
         try {
-          setProgress((p) => Math.min(95, p + 4));
+          setProgress((p) => Math.min(95, p + 2));
           const poll = await fetch(`/api/video/status/${videoId}`);
           const info = await poll.json();
           if (info.status === "done") {
@@ -177,14 +186,16 @@ export default function VideoCreatorPage() {
             setError(info.error ?? "Render failed.");
             setGenerating(false);
             setProgress(0);
-          } else if (Date.now() - started > 120_000) {
+          } else if (Date.now() - started > 360_000) {
             clearPoll();
-            setError("Render timed out. Try again.");
+            setError(
+              "Render timed out after 6 minutes. Remotion on free tier is slow — try again."
+            );
             setGenerating(false);
             setProgress(0);
           }
         } catch {}
-      }, 1500);
+      }, 3000);
     } catch (e: any) {
       setError(e.message);
       setGenerating(false);
@@ -193,14 +204,22 @@ export default function VideoCreatorPage() {
   }
 
   function clearPoll() {
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
   }
 
-  const canGenerate = !generating && title.trim().length > 0 && (imageData || imageUrlInput.trim());
+  const canGenerate =
+    !generating &&
+    (urlInput.trim().length > 0 ||
+      offerId !== null ||
+      (typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("offerId") !== null));
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 sm:space-y-6">
-      {/* ── HEADER ── */}
+      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -212,7 +231,7 @@ export default function VideoCreatorPage() {
             </h1>
           </div>
           <p className="mt-1.5 text-sm text-muted-foreground sm:pl-11">
-            Turn any product into a 20-second vertical ad — 1080×1920, MP4, no editing required.
+            Paste a product URL → AI-generated 20-second animated advert (1080×1920, MP4).
           </p>
         </div>
         {!isPremium ? (
@@ -231,28 +250,34 @@ export default function VideoCreatorPage() {
         )}
       </div>
 
-      {/* ── ERROR BANNER ── */}
+      {/* Error banner */}
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{error}</span>
-          <button onClick={() => setError(null)} className="shrink-0 opacity-70 hover:opacity-100" aria-label="Dismiss">
+          <button
+            onClick={() => setError(null)}
+            className="shrink-0 opacity-70 hover:opacity-100"
+            aria-label="Dismiss"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {/* ── AUTO-FILL FROM URL ── */}
+      {/* Auto-fill from URL */}
       <div className="rounded-2xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5 p-4 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
             <Wand2 className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold sm:text-base">Auto-fill from a product URL</h2>
+            <h2 className="text-sm font-semibold sm:text-base">
+              Auto-fill from a product URL
+            </h2>
             <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
-              Paste any product page — Jumia, AliExpress, Shopify, Impact, PartnerStack. We scrape
-              it, write a punchy hook, and pick a brand color for you.
+              Paste any product page — Jumia, AliExpress, Shopify, Impact, PartnerStack. We
+              scrape it, write a punchy hook, and pick a brand color for you.
             </p>
           </div>
         </div>
@@ -261,7 +286,9 @@ export default function VideoCreatorPage() {
           <input
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && urlInput.trim() && autoFill({ url: urlInput.trim() })}
+            onKeyDown={(e) =>
+              e.key === "Enter" && urlInput.trim() && autoFill({ url: urlInput.trim() })
+            }
             placeholder="https://example.com/product-page"
             className="h-11 w-full flex-1 rounded-xl border border-border bg-background px-3 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none"
             disabled={autoFilling}
@@ -269,9 +296,13 @@ export default function VideoCreatorPage() {
           <button
             onClick={() => autoFill({ url: urlInput.trim() })}
             disabled={autoFilling || !urlInput.trim()}
-            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-primary/40 bg-background px-5 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50"
           >
-            {autoFilling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {autoFilling ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
             {autoFilling ? "Scanning…" : "Auto-fill"}
           </button>
         </div>
@@ -311,20 +342,19 @@ export default function VideoCreatorPage() {
         )}
       </div>
 
-      {/* ── FORM + LIBRARY GRID ── */}
+      {/* Form + Library grid */}
       <div className="grid gap-5 sm:gap-6 lg:grid-cols-[1fr_380px]">
-        {/* FORM */}
+        {/* Form */}
         <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-6">
           <h2 className="mb-4 flex items-center gap-2 text-base font-semibold">
             <Sparkles className="h-4 w-4 text-primary" />
-            {preview ? "Review and generate" : "Create a video"}
+            {preview ? "Optional overrides" : "Video settings"}
           </h2>
 
           <div className="space-y-4 sm:space-y-5">
-            {/* Image */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                Product image <span className="text-rose-500">*</span>
+                Product image (optional — auto-filled from URL)
               </label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <label className="inline-flex h-11 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-medium hover:bg-muted">
@@ -336,7 +366,11 @@ export default function VideoCreatorPage() {
                   <ImageIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
                     value={imageUrlInput}
-                    onChange={(e) => { setImageUrlInput(e.target.value); setImageData(null); setImageName(null); }}
+                    onChange={(e) => {
+                      setImageUrlInput(e.target.value);
+                      setImageData(null);
+                      setImageName(null);
+                    }}
                     placeholder="or paste image URL"
                     disabled={!!imageData}
                     className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-3 text-sm placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none disabled:opacity-50"
@@ -351,7 +385,10 @@ export default function VideoCreatorPage() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => { setImageData(null); setImageName(null); }}
+                    onClick={() => {
+                      setImageData(null);
+                      setImageName(null);
+                    }}
                     className="shrink-0 font-medium text-rose-500 hover:underline"
                   >
                     Remove
@@ -360,11 +397,10 @@ export default function VideoCreatorPage() {
               )}
             </div>
 
-            {/* Title */}
             <div>
               <div className="mb-1.5 flex items-baseline justify-between">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Title / Hook <span className="text-rose-500">*</span>
+                  Title / Hook
                 </label>
                 <span className="text-[10px] text-muted-foreground">{title.length}/60</span>
               </div>
@@ -377,9 +413,10 @@ export default function VideoCreatorPage() {
               />
             </div>
 
-            {/* Price */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Price text</label>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Price text
+              </label>
               <input
                 value={priceText}
                 onChange={(e) => setPriceText(e.target.value)}
@@ -389,9 +426,10 @@ export default function VideoCreatorPage() {
               />
             </div>
 
-            {/* CTA */}
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Call to action</label>
+              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Call to action
+              </label>
               <input
                 value={ctaText}
                 onChange={(e) => setCtaText(e.target.value)}
@@ -401,9 +439,10 @@ export default function VideoCreatorPage() {
               />
             </div>
 
-            {/* Brand color */}
             <div>
-              <label className="mb-2 block text-xs font-medium text-muted-foreground">Brand color</label>
+              <label className="mb-2 block text-xs font-medium text-muted-foreground">
+                Brand color
+              </label>
               <div className="flex flex-wrap gap-2">
                 {BRAND_COLORS.map((c) => (
                   <button
@@ -423,7 +462,6 @@ export default function VideoCreatorPage() {
               </div>
             </div>
 
-            {/* Generate */}
             <div className="pt-2">
               <button
                 onClick={generate}
@@ -452,7 +490,7 @@ export default function VideoCreatorPage() {
                     />
                   </div>
                   <p className="mt-2 text-center text-xs text-muted-foreground">
-                    First render can take up to 30s (cold start). Downloads work while the page is open.
+                    Remotion render takes 60–180s on free tier. Download works while the page is open.
                   </p>
                 </div>
               )}
@@ -460,7 +498,7 @@ export default function VideoCreatorPage() {
           </div>
         </div>
 
-        {/* LIBRARY */}
+        {/* Library */}
         <div className="rounded-2xl border border-border/60 bg-card p-4 sm:p-6">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -498,7 +536,6 @@ export default function VideoCreatorPage() {
                   className="group rounded-xl border border-border/60 p-2.5 transition-colors hover:border-primary/40 hover:bg-muted/30"
                 >
                   <div className="flex items-center gap-2.5">
-                    {/* Thumbnail */}
                     <button
                       onClick={() => v.status === "done" && setPlayingVideo(v)}
                       disabled={v.status !== "done"}
@@ -529,7 +566,6 @@ export default function VideoCreatorPage() {
                       )}
                     </button>
 
-                    {/* Meta */}
                     <div className="min-w-0 flex-1">
                       <div className="line-clamp-2 text-sm font-medium leading-tight">
                         {v.title ?? "Untitled"}
@@ -546,7 +582,6 @@ export default function VideoCreatorPage() {
                       </div>
                     </div>
 
-                    {/* Action */}
                     {v.status === "done" && (
                       <a
                         href={v.url}
@@ -575,7 +610,7 @@ export default function VideoCreatorPage() {
         </div>
       </div>
 
-      {/* ── FULL-SCREEN VIDEO PLAYER ── */}
+      {/* Full-screen video player */}
       {playingVideo && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-2"
