@@ -10,22 +10,11 @@ import { scrapeUrl } from "@/lib/video/urlScraper";
 import { generateSceneScript } from "@/lib/video/sceneScript";
 import { createOrReuseLink } from "@/lib/money-engine/linkCloaker";
 import { generateQRFile } from "@/lib/video/qrGenerator";
-import { renderRemotionVideo } from "@/lib/video/remotionRenderer";
+import { renderVideo } from "@/lib/video/renderer";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-/**
- * POST /api/video/generate
- *
- * Body: { url?: string, offerId?: string }
- *
- * Creates a Video row and kicks off the render pipeline:
- *   scrape → AI script → cloaked link → QR → Remotion render → save
- *
- * Returns immediately with { id, status: "rendering" }.
- * Client polls /api/video/status/[id] until status is "done" or "failed".
- */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
@@ -72,10 +61,7 @@ export async function POST(req: Request) {
 
   if (!productUrl || !/^https?:\/\//.test(productUrl)) {
     return NextResponse.json(
-      {
-        error:
-          "Provide a product URL or offerId. URL must start with http:// or https://",
-      },
+      { error: "Provide a product URL or offerId." },
       { status: 400 }
     );
   }
@@ -87,7 +73,7 @@ export async function POST(req: Request) {
       platform: "tiktok",
       status: "rendering",
       title: "Rendering…",
-      template: "remotion_professional",
+      template: "ffmpeg_professional",
       productImageUrl: "",
       renderStartedAt: new Date(),
     },
@@ -98,7 +84,6 @@ export async function POST(req: Request) {
     data: { url: `/api/video/download/${video.id}` },
   });
 
-  // Fire-and-forget — the full pipeline runs after the HTTP response is sent
   runPipeline({
     userId,
     videoId: video.id,
@@ -142,10 +127,6 @@ export async function POST(req: Request) {
   return NextResponse.json({ id: video.id, status: "rendering" });
 }
 
-// ─────────────────────────────────────────────────────────────
-// Pipeline: scrape → AI script → cloaked link → QR → Remotion
-// ─────────────────────────────────────────────────────────────
-
 interface PipelineArgs {
   userId: string;
   videoId: string;
@@ -169,11 +150,9 @@ async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
   const workDir = path.join(os.tmpdir(), `video-${args.videoId}`);
   await fs.mkdir(workDir, { recursive: true });
 
-  // ── 1. Get product data (from offer row if present, else scrape) ──
   let productTitle: string;
   let productImage: string;
   let productPrice: string;
-  let productOriginalPrice: string;
   let productBrand: string;
   let productDescription: string;
 
@@ -183,22 +162,18 @@ async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     productPrice = args.offerRow.frontEndPrice
       ? `$${Number(args.offerRow.frontEndPrice).toFixed(2)}`
       : "";
-    productOriginalPrice = args.offerRow.originalPrice
-      ? `$${Number(args.offerRow.originalPrice).toFixed(2)}`
-      : "";
     productBrand = args.offerRow.vendor ?? "product";
     productDescription = args.offerRow.swipeCopy ?? "";
   } else {
     const scraped = await scrapeUrl(args.productUrl);
     if (!scraped.imageUrl) {
       throw new Error(
-        "No product image found at this URL. Try a specific product page (not a homepage)."
+        "No product image found at this URL. Try a specific product page."
       );
     }
     productTitle = scraped.title;
     productImage = scraped.imageUrl;
     productPrice = scraped.price ?? "";
-    productOriginalPrice = "";
     productBrand = scraped.brand ?? "product";
     productDescription = scraped.description;
   }
@@ -207,7 +182,7 @@ async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     throw new Error("Product image could not be resolved.");
   }
 
-  // ── 2. Generate AI script (hook + 3 scenes + CTA + brand color) ──
+  // AI script for title/CTA/brand color (light usage)
   const script = await generateSceneScript({
     url: args.productUrl,
     title: productTitle,
@@ -217,7 +192,7 @@ async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     brand: productBrand,
   });
 
-  // ── 3. Create or reuse cloaked link (/go/{slug}) ──
+  // Cloaked link + QR
   const link = await createOrReuseLink({
     userId: args.userId,
     offerId: args.offerId,
@@ -228,40 +203,21 @@ async function runPipeline(args: PipelineArgs): Promise<PipelineResult> {
     productHint: productTitle.split(" ").slice(0, 3).join(" "),
   });
 
-  // ── 4. Generate QR code PNG for the cloaked link ──
   const qrPath = path.join(workDir, "qr.png");
   await generateQRFile(link.shortUrl, qrPath);
   const qrDataUrl = `data:image/png;base64,${(
     await fs.readFile(qrPath)
   ).toString("base64")}`;
 
-  // ── 5. Prepare benefit list (fallback if AI didn't produce captions) ──
-  const captions = script.scenes
-    .map((s) => s.caption)
-    .filter((c): c is string => Boolean(c && c.trim()));
-
-  const benefitList =
-    captions.length > 0
-      ? captions.slice(0, 3)
-      : [
-          productTitle.slice(0, 30),
-          "Limited time offer",
-          "Tap the link in bio",
-        ];
-
-  // ── 6. Render via Remotion ──
-  console.log(`[video] Rendering Remotion for videoId=${args.videoId}`);
-  const result = await renderRemotionVideo({
+  console.log(`[video] Rendering FFmpeg for videoId=${args.videoId}`);
+  const result = await renderVideo({
     id: args.videoId,
-    productImageUrl: productImage,
-    productName: productTitle,
-    hookText: script.title,
-    benefits: benefitList,
+    title: script.title || productTitle.slice(0, 60),
     priceText: script.priceText || productPrice || "",
-    originalPriceText: productOriginalPrice,
-    ctaText: script.cta || "Link in bio → Comment LINK",
+    ctaText: script.cta || "Link in bio",
     brandColor: script.brandColor || "#4f46e5",
-    qrCodeUrl: qrDataUrl,
+    productImageUrl: productImage,
+    qrCodeDataUrl: qrDataUrl,
   });
 
   console.log(
