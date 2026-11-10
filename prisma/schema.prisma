@@ -435,4 +435,19 @@ model LinkToVideoJob {
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("link_to_video_jobs")
+  
+}
+// ═══════════════════════════════════════════════════════════
+// INDEXNOW — Automated submission tracking (dedup)
+// ═══════════════════════════════════════════════════════════
+
+model IndexNowSubmission {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  host        String
+  submittedAt DateTime @default(now())
+  endpoints   String?  @db.Text   // JSON array of per-endpoint results
+
+  @@index([submittedAt])
+  @@map("indexnow_submissions")
 }
