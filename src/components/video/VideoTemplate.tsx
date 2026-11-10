@@ -5,7 +5,6 @@ import {
   interpolate,
   useCurrentFrame,
   useVideoConfig,
-  spring,
 } from "remotion";
 
 export interface VideoTemplateProps {
@@ -20,33 +19,26 @@ export interface VideoTemplateProps {
   qrCodeUrl: string;
 }
 
-export const VideoTemplate: React.FC<VideoTemplateProps> = (props) => {
+export function VideoTemplate(props: VideoTemplateProps) {
   const { fps } = useVideoConfig();
 
   return (
     <AbsoluteFill style={{ backgroundColor: props.brandColor }}>
-      {/* Scene 1 — HOOK (0-3s) */}
-      <Sequence from={0} durationInFrames={3 * fps}>
+      <Sequence from={0} durationInFrames={2 * fps}>
         <HookScene {...props} />
       </Sequence>
-
-      {/* Scene 2 — PROBLEM (3-10s) */}
-      <Sequence from={3 * fps} durationInFrames={7 * fps}>
+      <Sequence from={2 * fps} durationInFrames={4 * fps}>
         <ProblemScene {...props} />
       </Sequence>
-
-      {/* Scene 3 — SOLUTION (10-16s) */}
-      <Sequence from={10 * fps} durationInFrames={6 * fps}>
+      <Sequence from={6 * fps} durationInFrames={3 * fps}>
         <SolutionScene {...props} />
       </Sequence>
-
-      {/* Scene 4 — CTA (16-20s) */}
-      <Sequence from={16 * fps} durationInFrames={4 * fps}>
+      <Sequence from={9 * fps} durationInFrames={1 * fps}>
         <CTAScene {...props} />
       </Sequence>
     </AbsoluteFill>
   );
-};
+}
 
 function HookScene({
   hookText,
@@ -54,12 +46,9 @@ function HookScene({
   brandColor,
 }: VideoTemplateProps) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
 
-  const scale = spring({
-    frame,
-    fps,
-    config: { damping: 12, stiffness: 200 },
+  const scale = interpolate(frame, [0, 8], [0.7, 1], {
+    extrapolateRight: "clamp",
   });
 
   return (
@@ -70,6 +59,7 @@ function HookScene({
           width: "100%",
           height: "100%",
           objectFit: "cover",
+          opacity: 0.4,
         }}
       />
       <AbsoluteFill style={{ backgroundColor: "rgba(0,0,0,0.55)" }} />
@@ -77,20 +67,20 @@ function HookScene({
         style={{
           justifyContent: "center",
           alignItems: "center",
-          padding: "0 60px",
+          padding: "0 30px",
           transform: `scale(${scale})`,
         }}
       >
         <div
           style={{
-            fontSize: 82,
+            fontSize: 41,
             fontWeight: 900,
             color: "white",
             textAlign: "center",
             lineHeight: 1.05,
-            textShadow: "0 4px 24px rgba(0,0,0,0.9)",
+            textShadow: "0 2px 12px rgba(0,0,0,0.9)",
             fontFamily: "Arial, sans-serif",
-            letterSpacing: -1,
+            letterSpacing: -0.5,
           }}
         >
           {hookText}
@@ -102,7 +92,7 @@ function HookScene({
           top: 0,
           left: 0,
           right: 0,
-          height: 12,
+          height: 6,
           backgroundColor: brandColor,
         }}
       />
@@ -141,15 +131,15 @@ function ProblemScene({
       <AbsoluteFill
         style={{
           justifyContent: "flex-end",
-          padding: "0 50px 200px",
+          padding: "0 25px 100px",
         }}
       >
         <div
           style={{
-            fontSize: 72,
+            fontSize: 36,
             fontWeight: 900,
             color: "white",
-            textShadow: "0 4px 24px rgba(0,0,0,0.9)",
+            textShadow: "0 2px 12px rgba(0,0,0,0.9)",
             fontFamily: "Arial, sans-serif",
             lineHeight: 1.1,
           }}
@@ -184,7 +174,7 @@ function SolutionScene({
       <AbsoluteFill
         style={{
           justifyContent: "flex-end",
-          padding: "0 50px 280px",
+          padding: "0 25px 140px",
         }}
       >
         {benefits.slice(0, 3).map((benefit, i) => {
@@ -193,7 +183,7 @@ function SolutionScene({
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
           });
-          const translateY = interpolate(frame - delay, [0, 15], [20, 0], {
+          const translateY = interpolate(frame - delay, [0, 15], [10, 0], {
             extrapolateLeft: "clamp",
             extrapolateRight: "clamp",
           });
@@ -205,20 +195,20 @@ function SolutionScene({
                 transform: `translateY(${translateY}px)`,
                 display: "flex",
                 alignItems: "center",
-                gap: 20,
-                marginBottom: 18,
+                gap: 10,
+                marginBottom: 9,
               }}
             >
               <div
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 20,
+                  height: 20,
                   borderRadius: "50%",
                   backgroundColor: brandColor,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 24,
+                  fontSize: 12,
                   color: "white",
                   fontWeight: 900,
                 }}
@@ -227,10 +217,10 @@ function SolutionScene({
               </div>
               <div
                 style={{
-                  fontSize: 44,
+                  fontSize: 22,
                   fontWeight: 700,
                   color: "white",
-                  textShadow: "0 2px 12px rgba(0,0,0,0.9)",
+                  textShadow: "0 1px 6px rgba(0,0,0,0.9)",
                   fontFamily: "Arial, sans-serif",
                 }}
               >
@@ -244,12 +234,12 @@ function SolutionScene({
       <div
         style={{
           position: "absolute",
-          bottom: 180,
-          left: 50,
-          right: 50,
+          bottom: 90,
+          left: 25,
+          right: 25,
           backgroundColor: brandColor,
-          borderRadius: 24,
-          padding: "28px 40px",
+          borderRadius: 12,
+          padding: "14px 20px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -257,7 +247,7 @@ function SolutionScene({
       >
         <div
           style={{
-            fontSize: 60,
+            fontSize: 30,
             fontWeight: 900,
             color: "white",
             fontFamily: "Arial, sans-serif",
@@ -268,7 +258,7 @@ function SolutionScene({
         {originalPriceText && (
           <div
             style={{
-              fontSize: 40,
+              fontSize: 20,
               fontWeight: 600,
               color: "rgba(255,255,255,0.7)",
               textDecoration: "line-through",
@@ -290,23 +280,23 @@ function CTAScene({ qrCodeUrl, ctaText, brandColor }: VideoTemplateProps) {
         backgroundColor: brandColor,
         justifyContent: "center",
         alignItems: "center",
-        padding: "0 80px",
+        padding: "0 40px",
       }}
     >
       <Img
         src={qrCodeUrl}
         style={{
-          width: 400,
-          height: 400,
+          width: 200,
+          height: 200,
           backgroundColor: "white",
-          borderRadius: 24,
-          padding: 20,
-          marginBottom: 60,
+          borderRadius: 12,
+          padding: 10,
+          marginBottom: 30,
         }}
       />
       <div
         style={{
-          fontSize: 68,
+          fontSize: 34,
           fontWeight: 900,
           color: "white",
           textAlign: "center",

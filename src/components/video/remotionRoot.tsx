@@ -6,10 +6,10 @@ const RemotionRoot = () => {
     <Composition
       id="VideoTemplate"
       component={VideoTemplate as any}
-      durationInFrames={600}
+      durationInFrames={300}
       fps={30}
-      width={720}
-      height={1280}
+      width={540}
+      height={960}
       defaultProps={{
         productImageUrl: "",
         productName: "",
@@ -26,4 +26,3 @@ const RemotionRoot = () => {
 };
 
 registerRoot(RemotionRoot);
-

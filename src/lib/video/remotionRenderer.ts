@@ -27,10 +27,27 @@ let cachedBundle: string | null = null;
 
 async function getBundle(): Promise<string> {
   if (cachedBundle) return cachedBundle;
-  cachedBundle = await bundle({
-    entryPoint: path.join(process.cwd(), "src", "components", "video", "remotionRoot.tsx"),
-  });
-  return cachedBundle;
+
+  // Prefer the bundle built at deploy time (see scripts/prebundle-remotion.mjs)
+  const preBundled = path.join(process.cwd(), ".remotion-bundle");
+  try {
+    await fs.access(preBundled);
+    cachedBundle = preBundled;
+    console.log(`[video] Using pre-built bundle: ${preBundled}`);
+    return preBundled;
+  } catch {
+    console.log(`[video] No pre-built bundle — bundling on demand (slow)`);
+    cachedBundle = await bundle({
+      entryPoint: path.join(
+        process.cwd(),
+        "src",
+        "components",
+        "video",
+        "remotionRoot.tsx"
+      ),
+    });
+    return cachedBundle;
+  }
 }
 
 export async function renderRemotionVideo(
@@ -67,13 +84,14 @@ export async function renderRemotionVideo(
     outputLocation: outputPath,
     inputProps,
     onBrowserLog: (log) => console.log(`[remotion] ${log.text}`),
+    // Single-threaded to prevent CPU thrashing / OOM on Render free tier
+    concurrency: 1,
   });
 
   const stat = await fs.stat(outputPath);
   return {
     filePath: outputPath,
     fileSizeBytes: stat.size,
-    durationSeconds: 20,
+    durationSeconds: 10,
   };
 }
-

@@ -186,7 +186,7 @@ export default function VideoCreatorPage() {
             setError(info.error ?? "Render failed.");
             setGenerating(false);
             setProgress(0);
-          } else if (Date.now() - started > 360_000) {
+          } else if (Date.now() - started > 600_000) {
             clearPoll();
             setError(
               "Render timed out after 6 minutes. Remotion on free tier is slow — try again."
