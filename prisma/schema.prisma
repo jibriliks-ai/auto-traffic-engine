@@ -19,26 +19,35 @@ model User {
   emailVerified    DateTime?
   image            String?
   passwordHash     String?
-  role             String    @default("user") // user | admin
-  plan             String    @default("free") // free | premium
+  role             String    @default("user")
+  plan             String    @default("free")
   planExpiresAt    DateTime?
   activeBusinessId String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // Core auth
   accounts            Account[]
   sessions            Session[]
-  businesses          Business[]
-  submissions         Submission[]
-  videos              Video[]
-  socialAccounts      SocialAccount[]
-  qaPosts             QAPost[]
-  payments            Payment[]
   passwordResetTokens PasswordResetToken[]
-  affiliateAccounts   UserAffiliateAccount[]
-  moneyEnginePosts    MoneyEnginePost[]
-  moneyEngineClicks   MoneyEngineClick[]
-  moneyEngineSales    MoneyEngineSale[]
+
+  // Business
+  businesses  Business[]
+  submissions Submission[]
+  qaPosts     QAPost[]
+
+  // Video + social
+  videos         Video[]
+  socialAccounts SocialAccount[]
+
+  // Billing
+  payments Payment[]
+
+  // Money Engine
+  affiliateAccounts UserAffiliateAccount[]
+  moneyEnginePosts  MoneyEnginePost[]
+  moneyEngineClicks MoneyEngineClick[]
+  moneyEngineSales  MoneyEngineSale[]
 
   // Link cloaker + Link-to-Video
   moneyEngineLinks      MoneyEngineLink[]
@@ -49,8 +58,12 @@ model User {
   salesCopy MoneyEngineSalesCopy[]
   usedHooks MoneyEngineUsedHook[]
 
-  // IndexNow automated submissions
+  // IndexNow submissions
   indexNowSubmissions IndexNowSubmission[]
+
+  // Social Poster
+  socialConnections SocialConnection[]
+  socialPosts       SocialPost[]
 }
 
 model Account {
@@ -114,7 +127,7 @@ model Submission {
   id           String    @id @default(cuid())
   userId       String
   businessId   String?
-  type         String // qa | classified | indexer | social | video
+  type         String
   platform     String
   url          String
   submittedUrl String
@@ -136,7 +149,7 @@ model Video {
   url        String
   thumbnail  String?
   platform   String   @default("tiktok")
-  status     String   @default("pending") // pending | rendering | done | failed
+  status     String   @default("pending")
   title      String?
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -160,11 +173,11 @@ model Video {
 model SocialAccount {
   id           String    @id @default(cuid())
   userId       String
-  provider     String // facebook | twitter | tiktok | youtube
+  provider     String
   accountId    String
   accountName  String?
   accessToken  String
-  pages        String? // JSON string
+  pages        String?
   dailyCount   Int       @default(0)
   lastPostDate DateTime?
   createdAt    DateTime  @default(now())
@@ -206,7 +219,7 @@ model Payment {
   reference String    @unique
   amount    Int
   currency  String    @default("NGN")
-  status    String    @default("pending") // pending | success | failed
+  status    String    @default("pending")
   plan      String    @default("premium")
   channel   String?
   createdAt DateTime  @default(now())
@@ -237,7 +250,7 @@ model PasswordResetToken {
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
-  platform              String // 'impact' | 'partnerstack'
+  platform              String
   affiliateUsername     String?
   affiliateId           String?
   apiKeyEncrypted       String?   @db.Text
@@ -257,7 +270,7 @@ model UserAffiliateAccount {
 
 model MoneyEngineOffer {
   id                    String   @id @default(cuid())
-  productType           String // 'digital' | 'physical'
+  productType           String
   platform              String
   offerId               String
   title                 String
@@ -366,7 +379,7 @@ model MoneyEngineSale {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LINK CLOAKER — branded /go/{slug} redirects
+// LINK CLOAKER
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineLink {
@@ -416,7 +429,7 @@ model MoneyEngineLinkClick {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LINK TO VIDEO — paste any URL → AI video
+// LINK TO VIDEO
 // ═══════════════════════════════════════════════════════════
 
 model LinkToVideoJob {
@@ -445,7 +458,7 @@ model LinkToVideoJob {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SALES COPY — unique per user + offer + platform + week
+// SALES COPY
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineSalesCopy {
@@ -453,12 +466,12 @@ model MoneyEngineSalesCopy {
   userId           String
   offerId          String
   contentId        String?
-  platform         String // 'lemmy' | 'answer'
-  postType         String // 'lemmy_discussion' | 'answer_question'
+  platform         String
+  postType         String
   title            String
   body             String    @db.Text
   hookUsed         String?   @db.Text
-  angleUsed        String? // 'price' | 'legit' | 'delivery' | 'comparison' | 'problem'
+  angleUsed        String?
   variationSeed    Int
   shortUrl         String
   lemmyPostId      String?
@@ -466,7 +479,7 @@ model MoneyEngineSalesCopy {
   answerAnswerId   String?
   lemmyUrl         String?
   answerUrl        String?
-  status           String    @default("draft") // 'draft' | 'scheduled' | 'posted' | 'failed'
+  status           String    @default("draft")
   scheduledAt      DateTime?
   postedAt         DateTime?
   retryCount       Int       @default(0)
@@ -499,7 +512,7 @@ model MoneyEngineUsedHook {
 }
 
 // ═══════════════════════════════════════════════════════════
-// INDEXNOW — automated submission tracking (dedup)
+// INDEXNOW
 // ═══════════════════════════════════════════════════════════
 
 model IndexNowSubmission {
@@ -514,4 +527,47 @@ model IndexNowSubmission {
 
   @@index([submittedAt])
   @@map("indexnow_submissions")
+}
+
+// ═══════════════════════════════════════════════════════════
+// SOCIAL POSTER
+// ═══════════════════════════════════════════════════════════
+
+model SocialConnection {
+  id             String    @id @default(cuid())
+  userId         String
+  platform       String
+  accountName    String?
+  credentials    String    @db.Text
+  isConnected    Boolean   @default(false)
+  lastVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@map("social_connections")
+}
+
+model SocialPost {
+  id             String    @id @default(cuid())
+  userId         String
+  offerId        String?
+  platform       String
+  caption        String    @db.Text
+  imageUrl       String?   @db.Text
+  imageBase64    String?   @db.Text
+  status         String    @default("draft")
+  postedAt       DateTime?
+  platformPostId String?
+  platformUrl    String?
+  error          String?   @db.Text
+  retryCount     Int       @default(0)
+  clicks         Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, postedAt])
+  @@map("social_posts")
 }

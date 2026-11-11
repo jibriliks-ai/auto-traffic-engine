@@ -4,42 +4,72 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { aiChat } from "@/lib/ai";
 import { getPersonalAffiliateLink } from "@/lib/money-engine/linkResolver";
+import { generateSocialImage } from "@/lib/social/imageGenerator";
 import type { TrafficModule } from "@/lib/money-engine/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 const VALID_MODULES: TrafficModule[] = ["tiktok", "facebook", "x", "youtube"];
 
 function extractJson(raw: string): any {
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch {}
+  try {
+    return JSON.parse(raw);
+  } catch {}
   const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (fenced) { try { return JSON.parse(fenced[1]); } catch {} }
+  if (fenced) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {}
+  }
   const brace = raw.match(/\{[\s\S]*\}/);
-  if (brace) { try { return JSON.parse(brace[0]); } catch {} }
+  if (brace) {
+    try {
+      return JSON.parse(brace[0]);
+    } catch {}
+  }
   return null;
 }
 
-function buildPrompt(offer: any, module: TrafficModule): { system: string; user: string } {
+function buildPrompt(
+  offer: any,
+  module: TrafficModule
+): { system: string; user: string } {
   const isDigital = offer.productType === "digital";
   const price = Number(offer.frontEndPrice ?? 0).toFixed(2);
-  const original = offer.originalPrice ? Number(offer.originalPrice).toFixed(2) : null;
-  const funnelMax = offer.funnelMaxPrice ? Number(offer.funnelMaxPrice).toFixed(2) : null;
+  const original = offer.originalPrice
+    ? Number(offer.originalPrice).toFixed(2)
+    : null;
+  const funnelMax = offer.funnelMaxPrice
+    ? Number(offer.funnelMaxPrice).toFixed(2)
+    : null;
 
   const baseContext = `Offer: ${offer.title}
 Product type: ${offer.productType}
 Category: ${offer.category ?? "general"}
-Price: $${price}${original ? ` (was $${original})` : ""}${funnelMax ? `, funnel max $${funnelMax}` : ""}
+Price: $${price}${original ? ` (was $${original})` : ""}${
+    funnelMax ? `, funnel max $${funnelMax}` : ""
+  }
 ${offer.vendor ? `Vendor: ${offer.vendor}` : ""}
-${isDigital
-  ? `EPC: $${Number(offer.epc).toFixed(2)} | Conversion: ${Number(offer.conversionRate).toFixed(1)}%`
-  : `Orders last 7 days: ${offer.orders7days.toLocaleString()} | Rating: ${Number(offer.rating).toFixed(1)}/5`}
+${
+  isDigital
+    ? `EPC: $${Number(offer.epc).toFixed(2)} | Conversion: ${Number(
+        offer.conversionRate
+      ).toFixed(1)}%`
+    : `Orders last 7 days: ${offer.orders7days.toLocaleString()} | Rating: ${Number(
+        offer.rating
+      ).toFixed(1)}/5`
+}
 ${isDigital && offer.isRecurring ? "Type: RECURRING subscription" : ""}
 
 Rules (non-negotiable):
 - No income guarantees, no get-rich-quick language, no fake claims.
-- ${isDigital ? "Frame as solving a specific problem, then show price + value." : "Frame as social proof + price drop + urgency. Do not promise results."}
+- ${
+    isDigital
+      ? "Frame as solving a specific problem, then show price + value."
+      : "Frame as social proof + price drop + urgency. Do not promise results."
+  }
 - Output must be valid JSON only.`;
 
   const moduleInstructions: Record<TrafficModule, string> = {
@@ -54,30 +84,48 @@ Return JSON: { "title": "max 60 chars", "description": "150 words", "tags": ["ta
   };
 
   return {
-    system: "You are a conversion-focused copywriter for affiliate marketing. You always return valid JSON only.",
+    system:
+      "You are a conversion-focused copywriter for affiliate marketing. You always return valid JSON only.",
     user: `${baseContext}\n\n${moduleInstructions[module]}`,
   };
 }
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const userId = (session.user as any).id;
+  const userId = (session?.user as any)?.id as string | undefined;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unauthorized — sign out and back in." },
+      { status: 401 }
+    );
+  }
 
   const body = await req.json().catch(() => ({}));
-  const { offerId, trafficModules } = body;
-  if (!offerId || !Array.isArray(trafficModules) || trafficModules.length === 0) {
-    return NextResponse.json({ error: "offerId and trafficModules[] required" }, { status: 400 });
-  }
-  const modules = (trafficModules as string[]).filter((m): m is TrafficModule =>
-    VALID_MODULES.includes(m as TrafficModule)
-  );
-  if (modules.length === 0) {
-    return NextResponse.json({ error: "No valid traffic modules" }, { status: 400 });
+  const offerId = String(body.offerId ?? "").trim();
+  const requestedModules = Array.isArray(body.trafficModules)
+    ? body.trafficModules
+    : VALID_MODULES;
+
+  if (!offerId) {
+    return NextResponse.json({ error: "offerId required" }, { status: 400 });
   }
 
-  const offer = await prisma.moneyEngineOffer.findUnique({ where: { id: offerId } });
-  if (!offer) return NextResponse.json({ error: "Offer not found" }, { status: 404 });
+  const modules = (requestedModules as string[]).filter(
+    (m): m is TrafficModule => VALID_MODULES.includes(m as TrafficModule)
+  );
+  if (modules.length === 0) {
+    return NextResponse.json(
+      { error: "No valid traffic modules" },
+      { status: 400 }
+    );
+  }
+
+  const offer = await prisma.moneyEngineOffer.findUnique({
+    where: { id: offerId },
+  });
+  if (!offer) {
+    return NextResponse.json({ error: "Offer not found" }, { status: 404 });
+  }
 
   // Resolve personal affiliate link if possible. If not connected, we still
   // generate content and save as draft — the link is filled on Phase 2.
@@ -89,12 +137,13 @@ export async function POST(req: Request) {
       affiliateLinkTemplate: offer.affiliateLinkTemplate,
     });
   } catch {
-    // expected until Phase 2 wires real clients
+    // expected until real platform clients land
   }
 
   const created: any[] = [];
   const errors: string[] = [];
 
+  // ── Step 1: Generate text content for each traffic module ──
   for (const trafficModule of modules) {
     try {
       const { system, user } = buildPrompt(offer, trafficModule);
@@ -112,16 +161,24 @@ export async function POST(req: Request) {
       let caption = "";
       let script = "";
       if (trafficModule === "tiktok") {
-        caption = `${parsed.caption ?? ""}\n\n${(parsed.hashtags ?? []).join(" ")}`.trim();
+        caption = `${parsed.caption ?? ""}\n\n${(parsed.hashtags ?? []).join(
+          " "
+        )}`.trim();
         script = parsed.script ?? "";
       } else if (trafficModule === "facebook") {
-        caption = `${parsed.caption ?? ""}\n\n${(parsed.hashtags ?? []).join(" ")}`.trim();
+        caption = `${parsed.caption ?? ""}\n\n${(parsed.hashtags ?? []).join(
+          " "
+        )}`.trim();
       } else if (trafficModule === "x") {
-        const tweets = Array.isArray(parsed.tweets) ? parsed.tweets : [parsed.caption ?? ""];
+        const tweets = Array.isArray(parsed.tweets)
+          ? parsed.tweets
+          : [parsed.caption ?? ""];
         caption = tweets.join("\n\n---\n\n");
         script = tweets.join("\n\n");
       } else if (trafficModule === "youtube") {
-        caption = `${parsed.title ?? ""}\n\n${parsed.description ?? ""}`.trim();
+        caption = `${parsed.title ?? ""}\n\n${
+          parsed.description ?? ""
+        }`.trim();
         script = (parsed.tags ?? []).join(", ");
       }
 
@@ -145,9 +202,60 @@ export async function POST(req: Request) {
     }
   }
 
+  // ── Step 2: Generate branded social images in parallel ──
+  // One 1080×1080 image per traffic module. Same base product image,
+  // but each is regenerated to keep costs predictable and allow
+  // per-module customization later.
+  const imagesByModule: Record<string, string> = {};
+
+  if (offer.imageUrl && created.length > 0) {
+    const price = offer.frontEndPrice
+      ? `$${Number(offer.frontEndPrice).toFixed(2)}${
+          offer.originalPrice
+            ? ` — was $${Number(offer.originalPrice).toFixed(2)}`
+            : ""
+        }`
+      : "";
+
+    const badge =
+      offer.originalPrice && offer.frontEndPrice
+        ? `${Math.round(
+            (1 -
+              Number(offer.frontEndPrice) / Number(offer.originalPrice)) *
+              100
+          )}% OFF`
+        : undefined;
+
+    await Promise.all(
+      created.map(async (p) => {
+        try {
+          const { dataUrl } = await generateSocialImage({
+            productImageUrl: offer.imageUrl!,
+            title: offer.title,
+            price,
+            brandName: offer.vendor ?? undefined,
+            ctaText: "Link in bio 👆",
+            brandColor: "#4f46e5",
+            badge,
+          });
+          imagesByModule[p.trafficModule] = dataUrl;
+        } catch (e: any) {
+          // Non-fatal — the text content is still valid without the image
+          console.warn(
+            `[generate-content] Image failed for ${p.trafficModule}: ${e?.message ?? e}`
+          );
+        }
+      })
+    );
+  }
+
+  // ── Step 3: Return posts with their matching images ──
   return NextResponse.json({
     ok: errors.length === 0,
-    posts: created,
+    posts: created.map((p: any) => ({
+      ...p,
+      image: imagesByModule[p.trafficModule] ?? null,
+    })),
     errors,
     linkResolved: affiliateLink !== "PENDING_CONNECTION",
   });
