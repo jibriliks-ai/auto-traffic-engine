@@ -40,10 +40,17 @@ model User {
   moneyEngineClicks   MoneyEngineClick[]
   moneyEngineSales    MoneyEngineSale[]
 
-  // ── Link cloaker + Link-to-Video (added for Video Engine v4) ──
+  // Link cloaker + Link-to-Video
   moneyEngineLinks      MoneyEngineLink[]
   moneyEngineLinkClicks MoneyEngineLinkClick[]
   linkToVideoJobs       LinkToVideoJob[]
+
+  // Sales Copy (unique Lemmy + Answer posts)
+  salesCopy MoneyEngineSalesCopy[]
+  usedHooks MoneyEngineUsedHook[]
+
+  // IndexNow automated submissions
+  indexNowSubmissions IndexNowSubmission[]
 }
 
 model Account {
@@ -134,8 +141,7 @@ model Video {
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // ── Video Engine v4 fields ──
-  template          String    @default("remotion_professional")
+  template          String    @default("ffmpeg_professional")
   script            String?   @db.Text
   productImageUrl   String?   @db.Text
   priceText         String?
@@ -225,13 +231,13 @@ model PasswordResetToken {
 }
 
 // ═══════════════════════════════════════════════════════════
-// AUTO MONEY ENGINE — v2.0
+// AUTO MONEY ENGINE
 // ═══════════════════════════════════════════════════════════
 
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
-  platform              String // 'impact' | 'partnerstack' (only 2 supported)
+  platform              String // 'impact' | 'partnerstack'
   affiliateUsername     String?
   affiliateId           String?
   apiKeyEncrypted       String?   @db.Text
@@ -247,8 +253,6 @@ model UserAffiliateAccount {
 
   @@unique([userId, platform])
   @@map("user_affiliate_accounts")
-    salesCopy      MoneyEngineSalesCopy[]
-  usedHooks      MoneyEngineUsedHook[]
 }
 
 model MoneyEngineOffer {
@@ -284,15 +288,15 @@ model MoneyEngineOffer {
   lastSyncedAt          DateTime @default(now())
   createdAt             DateTime @default(now())
 
-  posts  MoneyEnginePost[]
-  clicks MoneyEngineClick[]
-  sales  MoneyEngineSale[]
+  posts     MoneyEnginePost[]
+  clicks    MoneyEngineClick[]
+  sales     MoneyEngineSale[]
+  salesCopy MoneyEngineSalesCopy[]
 
   @@unique([platform, offerId])
   @@index([score(sort: Desc)])
   @@index([productType])
   @@map("money_engine_offers")
-  salesCopy MoneyEngineSalesCopy[]
 }
 
 model MoneyEnginePost {
@@ -362,7 +366,7 @@ model MoneyEngineSale {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LINK CLOAKER — v4 (branded /go/{slug} redirects)
+// LINK CLOAKER — branded /go/{slug} redirects
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineLink {
@@ -375,8 +379,8 @@ model MoneyEngineLink {
   shortUrl       String
   destinationUrl String   @db.Text
   qrCodeUrl      String?  @db.Text
-  sourceType     String   @default("video") // video | poster | qa_answer | manual
-  platform       String? // tiktok | facebook | instagram | x | whatsapp
+  sourceType     String   @default("video")
+  platform       String?
   clicks         Int      @default(0)
   conversions    Int      @default(0)
   earnings       Decimal  @default(0) @db.Decimal(10, 2)
@@ -412,23 +416,23 @@ model MoneyEngineLinkClick {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LINK TO VIDEO — v4 (paste any URL → AI video)
+// LINK TO VIDEO — paste any URL → AI video
 // ═══════════════════════════════════════════════════════════
 
 model LinkToVideoJob {
   id            String   @id @default(cuid())
   userId        String
   originalUrl   String   @db.Text
-  store         String? // jumia | konga | aliexpress | amazon | shopify | etsy | walmart | unknown
+  store         String?
   productName   String?
   price         Decimal? @db.Decimal(10, 2)
   originalPrice Decimal? @db.Decimal(10, 2)
   currency      String   @default("NGN")
-  images        String?  @db.Text // JSON array
+  images        String?  @db.Text
   description   String?  @db.Text
   affiliateUrl  String?  @db.Text
   shortUrl      String?
-  status        String   @default("scraping") // scraping | generating | done | failed
+  status        String   @default("scraping")
   errorMessage  String?  @db.Text
   videoUrl      String?  @db.Text
   posterUrl     String?  @db.Text
@@ -438,56 +442,42 @@ model LinkToVideoJob {
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("link_to_video_jobs")
-  
 }
-// ═══════════════════════════════════════════════════════════
-// INDEXNOW — Automated submission tracking (dedup)
-// ═══════════════════════════════════════════════════════════
 
-model IndexNowSubmission {
-  id          String   @id @default(cuid())
-  url         String   @unique
-  host        String
-  submittedAt DateTime @default(now())
-  endpoints   String?  @db.Text   // JSON array of per-endpoint results
-
-  @@index([submittedAt])
-  @@map("indexnow_submissions")
-}
 // ═══════════════════════════════════════════════════════════
-// SALES COPY — Unique per user + offer + platform + week
+// SALES COPY — unique per user + offer + platform + week
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineSalesCopy {
-  id              String    @id @default(cuid())
-  userId          String
-  offerId         String
-  contentId       String?
-  platform        String    // 'lemmy' | 'answer'
-  postType        String    // 'lemmy_discussion' | 'answer_question'
-  title           String
-  body            String    @db.Text
-  hookUsed        String?   @db.Text
-  angleUsed       String?   // 'price' | 'legit' | 'delivery' | 'comparison' | 'problem'
-  variationSeed   Int
-  shortUrl        String
-  lemmyPostId     String?
+  id               String    @id @default(cuid())
+  userId           String
+  offerId          String
+  contentId        String?
+  platform         String // 'lemmy' | 'answer'
+  postType         String // 'lemmy_discussion' | 'answer_question'
+  title            String
+  body             String    @db.Text
+  hookUsed         String?   @db.Text
+  angleUsed        String? // 'price' | 'legit' | 'delivery' | 'comparison' | 'problem'
+  variationSeed    Int
+  shortUrl         String
+  lemmyPostId      String?
   answerQuestionId String?
-  answerAnswerId  String?
-  lemmyUrl        String?
-  answerUrl       String?
-  status          String    @default("draft") // 'draft' | 'scheduled' | 'posted' | 'failed'
-  scheduledAt     DateTime?
-  postedAt        DateTime?
-  retryCount      Int       @default(0)
-  lastError       String?   @db.Text
-  views           Int       @default(0)
-  upvotes         Int       @default(0)
-  clicks          Int       @default(0)
-  createdAt       DateTime  @default(now())
+  answerAnswerId   String?
+  lemmyUrl         String?
+  answerUrl        String?
+  status           String    @default("draft") // 'draft' | 'scheduled' | 'posted' | 'failed'
+  scheduledAt      DateTime?
+  postedAt         DateTime?
+  retryCount       Int       @default(0)
+  lastError        String?   @db.Text
+  views            Int       @default(0)
+  upvotes          Int       @default(0)
+  clicks           Int       @default(0)
+  createdAt        DateTime  @default(now())
 
-  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer MoneyEngineOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
   @@unique([userId, offerId, platform, variationSeed])
   @@index([userId, status, scheduledAt])
@@ -506,4 +496,22 @@ model MoneyEngineUsedHook {
 
   @@unique([userId, hookText])
   @@map("money_engine_used_hooks")
+}
+
+// ═══════════════════════════════════════════════════════════
+// INDEXNOW — automated submission tracking (dedup)
+// ═══════════════════════════════════════════════════════════
+
+model IndexNowSubmission {
+  id          String   @id @default(cuid())
+  userId      String?
+  url         String   @unique
+  host        String
+  submittedAt DateTime @default(now())
+  endpoints   String?  @db.Text
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([submittedAt])
+  @@map("indexnow_submissions")
 }

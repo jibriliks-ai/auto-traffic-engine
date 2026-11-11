@@ -52,7 +52,7 @@ async function nextScheduledTime(
   tomorrow.setUTCHours(0, 0, 0, 0);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   const firstSlotWat = slots[0];
-  tomorrow.setUTCHours(firstSlotWAT - 1, 0, 0, 0);
+  tomorrow.setUTCHours(firstSlotWat - 1, 0, 0, 0);
   return tomorrow;
 }
 
