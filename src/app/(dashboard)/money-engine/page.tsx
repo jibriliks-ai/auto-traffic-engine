@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import {
   Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
   Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock, Film,
-  FileText,
+  FileText, Share2,
 } from "lucide-react";
 
 type Offer = {
@@ -34,6 +34,7 @@ type GeneratedPost = {
   trafficModule: string;
   caption: string;
   script: string;
+  image?: string | null;
 };
 
 const TABS = [
@@ -54,8 +55,11 @@ export default function MoneyEnginePage() {
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState<string | null>(null);
   const [generatingSalesCopy, setGeneratingSalesCopy] = useState<string | null>(null);
+  const [posting, setPosting] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<GeneratedPost[] | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
+  const [postResults, setPostResults] = useState<any>(null);
 
   const plan = (session?.user as any)?.plan ?? "free";
   const isAdmin = (session?.user as any)?.isAdmin === true;
@@ -95,8 +99,10 @@ export default function MoneyEnginePage() {
 
   async function generate(offerId: string) {
     setGenerating(offerId);
+    setActiveOfferId(offerId);
     setDrafts(null);
     setDraftError(null);
+    setPostResults(null);
     try {
       const res = await fetch("/api/money-engine/generate-content", {
         method: "POST",
@@ -124,14 +130,12 @@ export default function MoneyEnginePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-
       const lemmyTime = data.scheduledAt?.lemmy
         ? new Date(data.scheduledAt.lemmy).toLocaleString()
         : "soon";
       const answerTime = data.scheduledAt?.answer
         ? new Date(data.scheduledAt.answer).toLocaleString()
         : "soon";
-
       alert(
         `✓ Sales copy generated for both platforms!\n\n` +
           `Lemmy scheduled: ${lemmyTime}\n` +
@@ -142,6 +146,31 @@ export default function MoneyEnginePage() {
       alert(`Error: ${e.message}`);
     } finally {
       setGeneratingSalesCopy(null);
+    }
+  }
+
+  async function postDraftToSocial(draft: GeneratedPost) {
+    if (!activeOfferId) return;
+    setPosting(draft.id);
+    setPostResults(null);
+    try {
+      const res = await fetch("/api/social/post-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId: activeOfferId,
+          caption: draft.caption,
+          platforms: ["telegram", "bluesky", "mastodon"],
+          useGeneratedImage: true,
+        }),
+      });
+      const data = await res.json();
+      setPostResults(data);
+      if (!res.ok) throw new Error(data.error ?? "Post failed");
+    } catch (e: any) {
+      setPostResults({ error: e.message });
+    } finally {
+      setPosting(null);
     }
   }
 
@@ -292,13 +321,12 @@ export default function MoneyEnginePage() {
                   </div>
                 </div>
 
-                {/* ── Action buttons ── */}
                 <div className="flex shrink-0 flex-wrap gap-1.5">
                   <button
                     onClick={() => generate(o.id)}
                     disabled={generating === o.id}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
-                    title="Generate social captions for this offer"
+                    title="Generate social captions + branded images"
                   >
                     {generating === o.id ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -310,7 +338,6 @@ export default function MoneyEnginePage() {
                   <Link
                     href={`/video?offerId=${o.id}`}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                    title="Create a 20-second video ad for this offer"
                   >
                     <Film className="h-3 w-3" /> Make Video
                   </Link>
@@ -318,14 +345,13 @@ export default function MoneyEnginePage() {
                     onClick={() => generateSalesCopy(o.id)}
                     disabled={generatingSalesCopy === o.id}
                     className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 disabled:opacity-50 dark:text-emerald-400"
-                    title="Generate unique sales copy for Lemmy + Answer"
                   >
                     {generatingSalesCopy === o.id ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
                       <FileText className="h-3 w-3" />
                     )}
-                    {generatingSalesCopy === o.id ? "Generating…" : "Sales Copy"}
+                    {generatingSalesCopy === o.id ? "…" : "Sales Copy"}
                   </button>
                 </div>
               </div>
@@ -339,8 +365,10 @@ export default function MoneyEnginePage() {
         <Link href="/money-engine/settings" className="text-primary underline">
           Settings
         </Link>{" "}
-        to sync 50+ real brands. Until then, demo offers are used and generated drafts save with
-        link status <code className="rounded bg-muted px-1">PENDING_CONNECTION</code>.
+        to sync 50+ real brands. Manage social connections in{" "}
+        <Link href="/social" className="text-primary underline">
+          Social Poster
+        </Link>.
       </p>
 
       {draftError && (
@@ -349,31 +377,61 @@ export default function MoneyEnginePage() {
         </div>
       )}
 
+      {/* Drafts modal — NOW DISPLAYS IMAGES */}
       {drafts && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-          onClick={() => setDrafts(null)}
+          onClick={() => { setDrafts(null); setPostResults(null); }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
+            className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
               <div className="text-base font-semibold">Generated drafts ({drafts.length})</div>
               <button
-                onClick={() => setDrafts(null)}
+                onClick={() => { setDrafts(null); setPostResults(null); }}
                 className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="space-y-3">
+
+            <div className="space-y-4">
               {drafts.map((p) => (
                 <div key={p.id} className="rounded-lg border border-border/60 p-3">
-                  <div className="text-xs font-semibold uppercase text-primary">
-                    {p.trafficModule}
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase text-primary">
+                      {p.trafficModule}
+                    </div>
+                    <button
+                      onClick={() => postDraftToSocial(p)}
+                      disabled={posting === p.id}
+                      className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+                    >
+                      {posting === p.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Share2 className="h-3 w-3" />
+                      )}
+                      {posting === p.id ? "Posting…" : "Post to Social"}
+                    </button>
                   </div>
-                  <div className="mt-1 whitespace-pre-wrap text-sm">{p.caption}</div>
+
+                  {/* ─── IMAGE — the actual fix ─── */}
+                  {p.image ? (
+                    <img
+                      src={p.image}
+                      alt={`${p.trafficModule} preview`}
+                      className="mt-2 w-full rounded-lg border border-border/60"
+                    />
+                  ) : (
+                    <div className="mt-2 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/30 text-xs text-muted-foreground">
+                      Image not generated — check Render logs
+                    </div>
+                  )}
+
+                  <div className="mt-2 whitespace-pre-wrap text-sm">{p.caption}</div>
                   {p.script && p.trafficModule !== "x" && (
                     <details className="mt-2 text-xs text-muted-foreground">
                       <summary className="cursor-pointer">Script / tags</summary>
@@ -383,9 +441,39 @@ export default function MoneyEnginePage() {
                 </div>
               ))}
             </div>
+
+            {postResults && (
+              <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
+                <div className="font-semibold">Post results:</div>
+                {postResults.error ? (
+                  <div className="mt-1 text-rose-600 dark:text-rose-400">{postResults.error}</div>
+                ) : (
+                  <div className="mt-1 space-y-1">
+                    {(postResults.results ?? []).map((r: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="capitalize font-medium">{r.platform}:</span>
+                        {r.result?.ok ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            ✓ {r.result.platformUrl ?? "posted"}
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 dark:text-rose-400">
+                            ✗ {r.result?.error ?? "failed"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <p className="mt-4 text-xs text-muted-foreground">
-              Saved as <strong>drafts</strong> in the database. Use{" "}
-              <strong>Make Video</strong> on any offer to create the MP4 advert.
+              Images are 1080×1080 branded product cards. Connect platforms in{" "}
+              <Link href="/social" className="text-primary underline">
+                Social Poster
+              </Link>{" "}
+              to enable one-click posting.
             </p>
           </div>
         </div>
@@ -394,15 +482,7 @@ export default function MoneyEnginePage() {
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-}) {
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -427,9 +507,8 @@ function UpgradeGate() {
           Auto Money Engine — Premium
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
-          Connect Impact.com and PartnerStack once. Pull 50+ real brands — Jumia, AliExpress,
-          Walmart, Adidas, Shopify, Canva, Monday.com, HubSpot, Notion — and auto-generate video,
-          poster, and Q&A content to promote them.
+          Connect Impact.com and PartnerStack once. Pull 50+ real brands and auto-generate video,
+          images, and Q&A content to promote them.
         </p>
 
         <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border/60 bg-card p-5 text-left">
@@ -439,7 +518,7 @@ function UpgradeGate() {
           </div>
           <div className="mt-3 space-y-2 text-sm">
             {[
-              "Auto Money Engine — 50+ brands from Impact + PartnerStack",
+              "Auto Money Engine — 50+ brands",
               "Unlimited Q&A Finder searches",
               "Unlimited URL indexing",
               "Unlimited videos",
@@ -460,9 +539,6 @@ function UpgradeGate() {
         >
           <Crown className="h-4 w-4" /> Upgrade to Premium — $35/mo
         </Link>
-        <p className="mt-4 text-xs text-muted-foreground">
-          One fee unlocks every premium module. Cancel anytime.
-        </p>
       </div>
     </div>
   );
