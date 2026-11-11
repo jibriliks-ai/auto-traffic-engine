@@ -2,6 +2,11 @@ import sharp from "sharp";
 
 const SIZE = 1080; // Square — works for Facebook feed, X, Instagram, Mastodon, Bluesky, Telegram
 
+// Linux-safe font stack. DejaVu + Liberation are pre-installed on every
+// Render/similar Linux container. Arial is only a last resort for dev on
+// Windows/macOS. This is the fix for "text doesn't render on Linux".
+const FONT_STACK = "'DejaVu Sans', 'Liberation Sans', Arial, Helvetica, sans-serif";
+
 export interface ImageGenInput {
   productImageUrl: string;
   title: string;
@@ -15,18 +20,12 @@ export interface ImageGenInput {
 function esc(s: string): string {
   return s.replace(/[<>&'"]/g, (c) => {
     switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case "'":
-        return "&#39;";
-      case '"':
-        return "&quot;";
-      default:
-        return c;
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "&": return "&amp;";
+      case "'": return "&#39;";
+      case '"': return "&quot;";
+      default: return c;
     }
   });
 }
@@ -63,6 +62,15 @@ async function fetchImage(url: string): Promise<Buffer> {
   return buf;
 }
 
+async function renderSvgToPng(svg: string): Promise<Buffer | null> {
+  try {
+    return await sharp(Buffer.from(svg)).png().toBuffer();
+  } catch (e) {
+    console.warn("[imageGen] SVG render failed:", e);
+    return null;
+  }
+}
+
 /**
  * Generates a branded 1080×1080 product image for social media.
  *
@@ -73,7 +81,10 @@ async function fetchImage(url: string): Promise<Buffer> {
  *   - Top-right: brand name
  *   - Bottom: dark gradient overlay with title + price pill + CTA
  *
- * Returns both raw Buffer (for uploads) and base64 data URI (for preview).
+ * Robustness:
+ *   - If SVG text rendering fails (missing fonts), returns the image
+ *     WITHOUT text overlays — still usable, never throws.
+ *   - If the product image fetch fails, throws so the caller can respond 500.
  */
 export async function generateSocialImage(
   input: ImageGenInput
@@ -89,7 +100,7 @@ export async function generateSocialImage(
     })
     .toBuffer();
 
-  // Background: brand-color gradient with soft decorative circles
+  // Background SVG — gradients and circles don't need fonts, always work
   const bgSvg = `<svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -98,30 +109,21 @@ export async function generateSocialImage(
       </linearGradient>
     </defs>
     <rect width="${SIZE}" height="${SIZE}" fill="url(#bg)"/>
-    <circle cx="${SIZE * 0.85}" cy="${SIZE * 0.15}" r="${
-    SIZE * 0.45
-  }" fill="rgba(255,255,255,0.05)"/>
-    <circle cx="${SIZE * 0.15}" cy="${SIZE * 0.85}" r="${
-    SIZE * 0.35
-  }" fill="rgba(255,255,255,0.04)"/>
+    <circle cx="${SIZE * 0.85}" cy="${SIZE * 0.15}" r="${SIZE * 0.45}" fill="rgba(255,255,255,0.05)"/>
+    <circle cx="${SIZE * 0.15}" cy="${SIZE * 0.85}" r="${SIZE * 0.35}" fill="rgba(255,255,255,0.04)"/>
   </svg>`;
   const bg = await sharp(Buffer.from(bgSvg)).png().toBuffer();
 
   const titleLines = wrap(input.title, 22, 2);
   const priceLine = (wrap(input.price, 32, 1)[0] ?? input.price).slice(0, 40);
-
   const badgeW = input.badge ? Math.min(400, input.badge.length * 26 + 60) : 0;
 
   const overlaySvg = `<svg width="${SIZE}" height="${SIZE}" xmlns="http://www.w3.org/2000/svg">
     ${
       input.badge
         ? `
-      <rect x="40" y="40" width="${badgeW}" height="72" rx="36" fill="${esc(
-            brandColor
-          )}"/>
-      <text x="${40 + badgeW / 2}" y="88" font-family="Arial, sans-serif" font-size="34" font-weight="900" fill="white" text-anchor="middle">${esc(
-            input.badge
-          )}</text>
+      <rect x="40" y="40" width="${badgeW}" height="72" rx="36" fill="${esc(brandColor)}"/>
+      <text x="${40 + badgeW / 2}" y="88" font-family="${FONT_STACK}" font-size="34" font-weight="900" fill="white" text-anchor="middle">${esc(input.badge)}</text>
     `
         : ""
     }
@@ -129,9 +131,7 @@ export async function generateSocialImage(
     ${
       input.brandName
         ? `
-      <text x="${SIZE - 40}" y="92" font-family="Arial, sans-serif" font-size="32" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="end">${esc(
-            input.brandName.slice(0, 22)
-          )}</text>
+      <text x="${SIZE - 40}" y="92" font-family="${FONT_STACK}" font-size="32" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="end">${esc(input.brandName.slice(0, 22))}</text>
     `
         : ""
     }
@@ -147,31 +147,34 @@ export async function generateSocialImage(
     ${titleLines
       .map(
         (l, i) => `
-      <text x="${SIZE / 2}" y="${
-          SIZE - 270 + i * 58
-        }" font-family="Arial, sans-serif" font-size="50" font-weight="900" fill="white" text-anchor="middle">${esc(
-          l
-        )}</text>
+      <text x="${SIZE / 2}" y="${SIZE - 270 + i * 58}" font-family="${FONT_STACK}" font-size="50" font-weight="900" fill="white" text-anchor="middle">${esc(l)}</text>
     `
       )
       .join("")}
 
-    <rect x="60" y="${SIZE - 140}" width="${
-    SIZE - 120
-  }" height="86" rx="20" fill="${esc(brandColor)}"/>
-    <text x="${SIZE / 2}" y="${
-    SIZE - 82
-  }" font-family="Arial, sans-serif" font-size="48" font-weight="900" fill="white" text-anchor="middle">${esc(
-    priceLine
-  )}</text>
+    <rect x="60" y="${SIZE - 140}" width="${SIZE - 120}" height="86" rx="20" fill="${esc(brandColor)}"/>
+    <text x="${SIZE / 2}" y="${SIZE - 82}" font-family="${FONT_STACK}" font-size="48" font-weight="900" fill="white" text-anchor="middle">${esc(priceLine)}</text>
 
-    <text x="${SIZE / 2}" y="${
-    SIZE - 24
-  }" font-family="Arial, sans-serif" font-size="26" font-weight="700" fill="rgba(255,255,255,0.85)" text-anchor="middle">${esc(
-    input.ctaText
-  )}</text>
+    <text x="${SIZE / 2}" y="${SIZE - 24}" font-family="${FONT_STACK}" font-size="26" font-weight="700" fill="rgba(255,255,255,0.85)" text-anchor="middle">${esc(input.ctaText)}</text>
   </svg>`;
-  const overlay = await sharp(Buffer.from(overlaySvg)).png().toBuffer();
+
+  const overlay = await renderSvgToPng(overlaySvg);
+
+  const compositeInputs: sharp.OverlayOptions[] = [
+    { input: bg, top: 0, left: 0 },
+    {
+      input: resizedProduct,
+      top: Math.round(SIZE * 0.15),
+      left: Math.round((SIZE - productSize) / 2),
+    },
+  ];
+
+  if (overlay) {
+    compositeInputs.push({ input: overlay, top: 0, left: 0 });
+  } else {
+    // Fallback: no text overlay, still a valid product image
+    console.warn("[imageGen] Overlay skipped — returning image without text");
+  }
 
   const final = await sharp({
     create: {
@@ -181,15 +184,7 @@ export async function generateSocialImage(
       background: { r: 10, g: 10, b: 10 },
     },
   })
-    .composite([
-      { input: bg, top: 0, left: 0 },
-      {
-        input: resizedProduct,
-        top: Math.round(SIZE * 0.15),
-        left: Math.round((SIZE - productSize) / 2),
-      },
-      { input: overlay, top: 0, left: 0 },
-    ])
+    .composite(compositeInputs)
     .jpeg({ quality: 90, progressive: true, mozjpeg: true })
     .toBuffer();
 
