@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import {
   Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
   Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock, Film,
+  FileText,
 } from "lucide-react";
 
 type Offer = {
@@ -52,6 +53,7 @@ export default function MoneyEnginePage() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState<string | null>(null);
+  const [generatingSalesCopy, setGeneratingSalesCopy] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<GeneratedPost[] | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
 
@@ -109,6 +111,37 @@ export default function MoneyEnginePage() {
       setDraftError(e.message);
     } finally {
       setGenerating(null);
+    }
+  }
+
+  async function generateSalesCopy(offerId: string) {
+    setGeneratingSalesCopy(offerId);
+    try {
+      const res = await fetch("/api/money-engine/generate-sales-copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+
+      const lemmyTime = data.scheduledAt?.lemmy
+        ? new Date(data.scheduledAt.lemmy).toLocaleString()
+        : "soon";
+      const answerTime = data.scheduledAt?.answer
+        ? new Date(data.scheduledAt.answer).toLocaleString()
+        : "soon";
+
+      alert(
+        `✓ Sales copy generated for both platforms!\n\n` +
+          `Lemmy scheduled: ${lemmyTime}\n` +
+          `Answer scheduled: ${answerTime}\n\n` +
+          `Posts will auto-publish from the queue every 30 minutes.`
+      );
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    } finally {
+      setGeneratingSalesCopy(null);
     }
   }
 
@@ -281,6 +314,19 @@ export default function MoneyEnginePage() {
                   >
                     <Film className="h-3 w-3" /> Make Video
                   </Link>
+                  <button
+                    onClick={() => generateSalesCopy(o.id)}
+                    disabled={generatingSalesCopy === o.id}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 disabled:opacity-50 dark:text-emerald-400"
+                    title="Generate unique sales copy for Lemmy + Answer"
+                  >
+                    {generatingSalesCopy === o.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <FileText className="h-3 w-3" />
+                    )}
+                    {generatingSalesCopy === o.id ? "Generating…" : "Sales Copy"}
+                  </button>
                 </div>
               </div>
             ))}

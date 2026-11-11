@@ -247,6 +247,8 @@ model UserAffiliateAccount {
 
   @@unique([userId, platform])
   @@map("user_affiliate_accounts")
+    salesCopy      MoneyEngineSalesCopy[]
+  usedHooks      MoneyEngineUsedHook[]
 }
 
 model MoneyEngineOffer {
@@ -290,6 +292,7 @@ model MoneyEngineOffer {
   @@index([score(sort: Desc)])
   @@index([productType])
   @@map("money_engine_offers")
+  salesCopy MoneyEngineSalesCopy[]
 }
 
 model MoneyEnginePost {
@@ -450,4 +453,57 @@ model IndexNowSubmission {
 
   @@index([submittedAt])
   @@map("indexnow_submissions")
+}
+// ═══════════════════════════════════════════════════════════
+// SALES COPY — Unique per user + offer + platform + week
+// ═══════════════════════════════════════════════════════════
+
+model MoneyEngineSalesCopy {
+  id              String    @id @default(cuid())
+  userId          String
+  offerId         String
+  contentId       String?
+  platform        String    // 'lemmy' | 'answer'
+  postType        String    // 'lemmy_discussion' | 'answer_question'
+  title           String
+  body            String    @db.Text
+  hookUsed        String?   @db.Text
+  angleUsed       String?   // 'price' | 'legit' | 'delivery' | 'comparison' | 'problem'
+  variationSeed   Int
+  shortUrl        String
+  lemmyPostId     String?
+  answerQuestionId String?
+  answerAnswerId  String?
+  lemmyUrl        String?
+  answerUrl       String?
+  status          String    @default("draft") // 'draft' | 'scheduled' | 'posted' | 'failed'
+  scheduledAt     DateTime?
+  postedAt        DateTime?
+  retryCount      Int       @default(0)
+  lastError       String?   @db.Text
+  views           Int       @default(0)
+  upvotes         Int       @default(0)
+  clicks          Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer MoneyEngineOffer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, offerId, platform, variationSeed])
+  @@index([userId, status, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("money_engine_sales_copy")
+}
+
+model MoneyEngineUsedHook {
+  id         String   @id @default(cuid())
+  userId     String
+  hookText   String   @db.Text
+  usedCount  Int      @default(1)
+  lastUsedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, hookText])
+  @@map("money_engine_used_hooks")
 }
