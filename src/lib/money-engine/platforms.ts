@@ -1,62 +1,50 @@
-import type { PlatformId, ProductType } from "./types";
-
-export interface PlatformField {
-  key: "affiliateUsername" | "affiliateId" | "apiKey" | "apiSecret" | "accessToken" | "accountId";
-  label: string;
-  placeholder: string;
-  secret: boolean;
-}
+import type { PlatformId } from "./types";
 
 export interface PlatformConfig {
   id: PlatformId;
   name: string;
-  category: ProductType;
-  fields: PlatformField[];
-  hint: string;
-  brands: string[];
+  color: string;
+  description: string;
+  howTo: string[];      // Step-by-step for getting the tracking link
+  linkExample: string;  // Example URL pattern
+  dashboardUrl: string; // Where they get their links
 }
 
+/**
+ * Only 2 platforms. Both use the same "paste tracking link" method.
+ * No API, no SID, no Token.
+ */
 export const PLATFORM_CONFIG: PlatformConfig[] = [
   {
     id: "impact",
     name: "Impact.com",
-    category: "digital",
-    hint:
-      "One Impact account carries 30+ brands — Jumia NG, AliExpress, Walmart, Adidas, Shopify, Canva, Semrush, Hostinger, NordVPN, Konga and more. Get credentials from Settings → API.",
-    fields: [
-      { key: "accountId", label: "Account SID", placeholder: "1234567", secret: false },
-      { key: "accessToken", label: "Auth Token", placeholder: "••••••", secret: true },
+    color: "#ff5e5e",
+    description:
+      "Impact powers 3,000+ brands including Jumia, AliExpress, Walmart, Adidas, Canva, Shopify, Monday, HubSpot. Paste your affiliate link for any product you want to promote.",
+    howTo: [
+      "Log in to app.impact.com as a Partner (Publisher)",
+      "Find the campaign (brand) you want to promote",
+      "Click 'Create Tracking Link' or 'Get Link'",
+      "Copy the full tracking URL (usually starts with https://{brand}.sjv.io/...)",
+      "Paste it below with a friendly name and the product page URL",
     ],
-    brands: [
-      "Jumia NG", "Konga", "AliExpress", "Walmart", "Adidas", "Levi's",
-      "StockX", "Etsy", "Fanatics", "Lenovo", "Nike", "eBay",
-      "Shopify", "Canva", "Semrush", "Hostinger", "NordVPN", "Norton",
-      "Bitdefender", "Wondershare", "EaseUS", "AppSumo", "Skillshare",
-      "Airbnb", "Booking.com", "TripAdvisor", "Ticketmaster", "Uber",
-      "L'Oréal", "Glossier",
-    ],
+    linkExample: "https://jumia-ng.sjv.io/c/123456/789/12345",
+    dashboardUrl: "https://app.impact.com",
   },
   {
-    id: "partnerstack",
-    name: "PartnerStack",
-    category: "digital",
-    hint:
-      "One PartnerStack account carries 20+ SaaS programs — Monday.com, HubSpot, Slack, Webflow, Asana, Notion, Jasper AI, Typeform and more. Most programs pay recurring.",
-    fields: [
-      { key: "apiKey", label: "Public Key", placeholder: "pk_live_...", secret: true },
-      { key: "apiSecret", label: "Secret Key", placeholder: "••••••", secret: true },
-      { key: "affiliateId", label: "Partner ID", placeholder: "partner_12345", secret: false },
+    id: "warriorplus",
+    name: "WarriorPlus",
+    color: "#c0392b",
+    description:
+      "WarriorPlus hosts 1,000+ digital products — software, courses, marketing tools. Paste your affiliate link for any offer you want to promote.",
+    howTo: [
+      "Log in to warriorplus.com",
+      "Find a product in Marketplace you're approved for",
+      "Click 'Get Affiliate Link'",
+      "Copy your link (format: https://warriorplus.com/o2/a/xxxxx/username)",
+      "Paste it below with the product name and page URL",
     ],
-    brands: [
-      "Monday.com", "HubSpot", "Slack", "Webflow", "Asana", "Typeform",
-      "Mailchimp", "Freshbooks", "Unbounce", "Loom", "ActiveCampaign",
-      "ClickUp", "Calendly", "Pipedrive", "Intercom", "ZoomInfo",
-      "ConvertKit", "Notion", "Grammarly", "Jasper AI",
-    ],
+    linkExample: "https://warriorplus.com/o2/a/abc123/yourusername",
+    dashboardUrl: "https://warriorplus.com",
   },
 ];
-
-export const REQUIRED_FIELDS: Record<PlatformId, PlatformField["key"][]> = {
-  impact: ["accountId", "accessToken"],
-  partnerstack: ["apiKey", "apiSecret", "affiliateId"],
-};

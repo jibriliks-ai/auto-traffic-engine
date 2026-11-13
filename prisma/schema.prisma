@@ -36,14 +36,14 @@ model User {
   submissions Submission[]
   qaPosts     QAPost[]
 
-  // Video + social
+  // Video + social accounts
   videos         Video[]
   socialAccounts SocialAccount[]
 
   // Billing
   payments Payment[]
 
-  // Money Engine
+  // Money Engine — legacy (kept for backwards compatibility)
   affiliateAccounts UserAffiliateAccount[]
   moneyEnginePosts  MoneyEnginePost[]
   moneyEngineClicks MoneyEngineClick[]
@@ -64,6 +64,9 @@ model User {
   // Social Poster
   socialConnections SocialConnection[]
   socialPosts       SocialPost[]
+
+  // User tracking links (paste-your-affiliate-link method — replaces API connections)
+  trackingLinks UserTrackingLink[]
 }
 
 model Account {
@@ -247,6 +250,8 @@ model PasswordResetToken {
 // AUTO MONEY ENGINE
 // ═══════════════════════════════════════════════════════════
 
+// LEGACY — kept for backwards compatibility but no longer used.
+// User connections are now handled by UserTrackingLink (paste-link method).
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
@@ -570,4 +575,35 @@ model SocialPost {
 
   @@index([userId, status, postedAt])
   @@map("social_posts")
+}
+
+// ═══════════════════════════════════════════════════════════
+// USER TRACKING LINKS — the "paste your affiliate link" method
+// Replaces API-based connections. Works for any affiliate platform.
+// ═══════════════════════════════════════════════════════════
+
+model UserTrackingLink {
+  id              String   @id @default(cuid())
+  userId          String
+  platform        String // "impact" | "warriorplus"
+  label           String // User's friendly name (e.g. "Tecno Spark 20")
+  productName     String
+  productImageUrl String?  @db.Text
+  merchantUrl     String   @db.Text // Where the buyer lands
+  trackingUrl     String   @db.Text // User's affiliate tracking URL
+  price           Decimal? @db.Decimal(10, 2)
+  originalPrice   Decimal? @db.Decimal(10, 2)
+  currency        String   @default("USD")
+  category        String?
+  description     String?  @db.Text
+  offerId         String? // Optional link to a catalog MoneyEngineOffer
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, platform])
+  @@index([userId, isActive])
+  @@map("user_tracking_links")
 }

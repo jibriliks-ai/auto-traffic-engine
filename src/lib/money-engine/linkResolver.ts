@@ -1,53 +1,61 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Returns a personalized affiliate link for the given user + offer.
+ * Returns the user's affiliate tracking URL for a given offer.
  *
- * Phase 1: real platform clients are NOT wired up yet — every platform
- * throws NOT_IMPLEMENTED with a clear message. When you add a real
- * platform client (Phase 2), swap the throw for the actual API call.
+ * Lookup priority:
+ *   1. UserTrackingLink where offerId matches the offer
+ *   2. UserTrackingLink where platform matches + label resembles offer title
+ *   3. Any active UserTrackingLink for this platform (fallback)
+ *   4. Throw NOT_CONNECTED — caller shows "Paste your link" prompt
  *
- * Security:
- * - Never returns the raw affiliate link to the frontend — the caller
- *   wraps it in a cloaked /go/{slug} link (Phase 3) instead.
- * - All API keys are decrypted here only, never logged or exposed.
+ * No API calls. No SID. No token. The user's pasted URL is the answer.
  */
 export async function getPersonalAffiliateLink(
   userId: string,
   offer: {
     platform: string;
     offerId: string;
+    title?: string;
     affiliateLinkTemplate?: string | null;
   }
 ): Promise<string> {
-  const account = await prisma.userAffiliateAccount.findUnique({
-    where: { userId_platform: { userId, platform: offer.platform } },
+  // 1. Exact offer match
+  if (offer.offerId) {
+    const exact = await prisma.userTrackingLink.findFirst({
+      where: {
+        userId,
+        platform: offer.platform,
+        offerId: offer.offerId,
+        isActive: true,
+      },
+    });
+    if (exact) return exact.trackingUrl;
+  }
+
+  // 2. Fuzzy match by offer title (in case user didn't set offerId)
+  if (offer.title) {
+    const fuzzy = await prisma.userTrackingLink.findFirst({
+      where: {
+        userId,
+        platform: offer.platform,
+        isActive: true,
+        OR: [
+          { label: { contains: offer.title.slice(0, 20), mode: "insensitive" } },
+          { productName: { contains: offer.title.slice(0, 20), mode: "insensitive" } },
+        ],
+      },
+    });
+    if (fuzzy) return fuzzy.trackingUrl;
+  }
+
+  // 3. Fallback — any active link for this platform
+  const fallback = await prisma.userTrackingLink.findFirst({
+    where: { userId, platform: offer.platform, isActive: true },
+    orderBy: { createdAt: "desc" },
   });
+  if (fallback) return fallback.trackingUrl;
 
-  if (!account || !account.isConnected) {
-    throw new Error(`NOT_CONNECTED:${offer.platform}`);
-  }
-
-  // ─── Phase 2 — real platform clients go here ───
-
-  switch (offer.platform) {
-    case "impact":
-      // Phase 2:
-      //   decrypt account.accessTokenEncrypted + account.accountId
-      //   POST https://api.impact.com/Mediapartners/{accountId}/Campaigns/{offerId}/TrackingLinks
-      //   Body: { SubId1: userId }  (for click attribution)
-      //   Return the TrackingURL from the response.
-      throw new Error("NOT_IMPLEMENTED:impact");
-
-    case "partnerstack":
-      // Phase 2:
-      //   decrypt account.apiKeyEncrypted + account.apiSecretEncrypted
-      //   POST https://api.partnerstack.com/api/v2/links
-      //   Body: { offer_id: offerId, partner_id: account.affiliateId, customer_id: userId }
-      //   Return the url from the response.
-      throw new Error("NOT_IMPLEMENTED:partnerstack");
-
-    default:
-      throw new Error(`UNKNOWN_PLATFORM:${offer.platform}`);
-  }
+  // 4. Not connected — caller shows the "paste link" modal
+  throw new Error(`NOT_CONNECTED:${offer.platform}`);
 }

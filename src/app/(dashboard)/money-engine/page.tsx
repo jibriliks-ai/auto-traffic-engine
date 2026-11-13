@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import {
   Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
   Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock, Film,
-  FileText, Share2,
+  FileText, Share2, Link2, ExternalLink,
 } from "lucide-react";
 
 type Offer = {
@@ -35,6 +35,7 @@ type GeneratedPost = {
   caption: string;
   script: string;
   image?: string | null;
+  affiliateLink?: string;
 };
 
 const TABS = [
@@ -45,13 +46,16 @@ const TABS = [
 
 const MODULES = ["tiktok", "facebook", "x", "youtube"] as const;
 
+// Only these platforms are supported via the paste-tracking-link method.
+const SUPPORTED_PLATFORMS = new Set(["impact", "warriorplus"]);
+
 export default function MoneyEnginePage() {
   const { data: session, status } = useSession();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [tab, setTab] = useState<"all" | "digital" | "physical">("all");
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState("");
   const [generating, setGenerating] = useState<string | null>(null);
   const [generatingSalesCopy, setGeneratingSalesCopy] = useState<string | null>(null);
@@ -59,7 +63,13 @@ export default function MoneyEnginePage() {
   const [drafts, setDrafts] = useState<GeneratedPost[] | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
+  const [activeOfferTitle, setActiveOfferTitle] = useState<string | null>(null);
+  const [activeOfferPlatform, setActiveOfferPlatform] = useState<string | null>(null);
   const [postResults, setPostResults] = useState<any>(null);
+
+  // "Add tracking link" modal — shown when Generate hits NOT_CONNECTED
+  const [notConnectedOfferId, setNotConnectedOfferId] = useState<string | null>(null);
+  const [notConnectedPlatform, setNotConnectedPlatform] = useState<string | null>(null);
 
   const plan = (session?.user as any)?.plan ?? "free";
   const isAdmin = (session?.user as any)?.isAdmin === true;
@@ -73,7 +83,13 @@ export default function MoneyEnginePage() {
       const res = await fetch(`/api/money-engine/offers${qs}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to load offers");
-      setOffers(data.offers ?? []);
+
+      // Filter out any legacy PartnerStack offers that may exist from older syncs
+      const filtered = (data.offers ?? []).filter((o: Offer) =>
+        SUPPORTED_PLATFORMS.has(o.platform)
+      );
+
+      setOffers(filtered);
       setStats(data.stats ?? null);
     } catch (e: any) {
       setError(e.message);
@@ -83,26 +99,30 @@ export default function MoneyEnginePage() {
   }
 
   async function seedMock() {
-    setSyncing(true);
+    setSeeding(true);
     setError("");
     try {
       const res = await fetch("/api/money-engine/seed-mock", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Sync failed");
+      if (!res.ok) throw new Error(data.error ?? "Load failed");
       await load();
     } catch (e: any) {
       setError(e.message);
     } finally {
-      setSyncing(false);
+      setSeeding(false);
     }
   }
 
   async function generate(offerId: string) {
+    const offer = offers.find((o) => o.id === offerId);
     setGenerating(offerId);
     setActiveOfferId(offerId);
+    setActiveOfferTitle(offer?.title ?? null);
+    setActiveOfferPlatform(offer?.platform ?? null);
     setDrafts(null);
     setDraftError(null);
     setPostResults(null);
+
     try {
       const res = await fetch("/api/money-engine/generate-content", {
         method: "POST",
@@ -110,11 +130,44 @@ export default function MoneyEnginePage() {
         body: JSON.stringify({ offerId, trafficModules: MODULES }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Generation failed");
-      setDrafts(data.posts ?? []);
+
+      // Case 1: server returned an error indicating the user hasn't added a tracking link
+      if (!res.ok) {
+        const msg = String(data.error ?? "").toLowerCase();
+        if (
+          msg.includes("not_connected") ||
+          msg.includes("not connected") ||
+          msg.includes("tracking link") ||
+          msg.includes("no affiliate")
+        ) {
+          setNotConnectedOfferId(offerId);
+          setNotConnectedPlatform(offer?.platform ?? null);
+          setGenerating(null);
+          return;
+        }
+        throw new Error(data.error ?? "Generation failed");
+      }
+
+      const posts: GeneratedPost[] = data.posts ?? [];
+
+      // Case 2: server succeeded but no link resolved for this offer
+      if (posts.length > 0 && posts[0].affiliateLink === "PENDING_CONNECTION") {
+        setNotConnectedOfferId(offerId);
+        setNotConnectedPlatform(offer?.platform ?? null);
+        setGenerating(null);
+        return;
+      }
+
+      setDrafts(posts);
       if (data.errors?.length) setDraftError(data.errors.join(" · "));
     } catch (e: any) {
-      setDraftError(e.message);
+      const msg = String(e.message ?? "").toLowerCase();
+      if (msg.includes("not_connected") || msg.includes("not connected")) {
+        setNotConnectedOfferId(offerId);
+        setNotConnectedPlatform(offer?.platform ?? null);
+      } else {
+        setDraftError(e.message);
+      }
     } finally {
       setGenerating(null);
     }
@@ -193,11 +246,12 @@ export default function MoneyEnginePage() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Auto Money Engine</h1>
           <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-            2 networks · 50+ brands. Impact.com + PartnerStack, all in one dashboard.
+            2 networks · 50+ brands. Impact + WarriorPlus, connected via your own tracking links.
           </p>
         </div>
         <div className="flex gap-2">
@@ -205,19 +259,20 @@ export default function MoneyEnginePage() {
             href="/money-engine/settings"
             className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
           >
-            <Settings className="h-4 w-4" /> Settings
+            <Settings className="h-4 w-4" /> My links
           </Link>
           <button
             onClick={seedMock}
-            disabled={syncing}
+            disabled={seeding}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
-            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {syncing ? "Syncing…" : offers.length === 0 ? "Load Demo Offers" : "Sync Now"}
+            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {seeding ? "Loading…" : offers.length === 0 ? "Load Demo Offers" : "Refresh"}
           </button>
         </div>
       </div>
 
+      {/* Error banner */}
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -225,12 +280,14 @@ export default function MoneyEnginePage() {
         </div>
       )}
 
+      {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard icon={<Sparkles className="h-4 w-4" />} label="Active Offers" value={stats?.totalActive ?? 0} />
         <StatCard icon={<Cpu className="h-4 w-4" />} label="Digital" value={stats?.digitalCount ?? 0} />
         <StatCard icon={<Package className="h-4 w-4" />} label="Physical" value={stats?.physicalCount ?? 0} />
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-2 border-b border-border/60">
         {TABS.map((t) => (
           <button
@@ -247,6 +304,7 @@ export default function MoneyEnginePage() {
         ))}
       </div>
 
+      {/* Offers list */}
       <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
         {loading ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -254,7 +312,7 @@ export default function MoneyEnginePage() {
           </div>
         ) : offers.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            No offers yet. Click <strong>Load Demo Offers</strong> to preview 10 mock offers across Impact + PartnerStack.
+            No offers yet. Click <strong>Load Demo Offers</strong> to preview mock offers from Impact + WarriorPlus.
           </div>
         ) : (
           <div className="divide-y divide-border/60">
@@ -360,37 +418,115 @@ export default function MoneyEnginePage() {
         )}
       </div>
 
+      {/* Info footer */}
       <p className="text-xs text-muted-foreground">
-        Connect Impact.com or PartnerStack in{" "}
+        Add your affiliate links in{" "}
         <Link href="/money-engine/settings" className="text-primary underline">
-          Settings
+          My links
         </Link>{" "}
-        to sync 50+ real brands. Manage social connections in{" "}
-        <Link href="/social" className="text-primary underline">
-          Social Poster
-        </Link>.
+        — one per product you want to promote. Every video, image, and sales copy
+        you generate will contain your personal tracking URL. No API keys, no
+        SID, no tokens.
       </p>
 
+      {/* Draft error banner */}
       {draftError && (
         <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
           {draftError}
         </div>
       )}
 
-      {/* Drafts modal — NOW DISPLAYS IMAGES */}
+      {/* ═══════════════════════════════════════════════
+          NOT CONNECTED modal — tells user to add their link
+          ═══════════════════════════════════════════════ */}
+      {notConnectedOfferId && (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4"
+          onClick={() => setNotConnectedOfferId(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
+          >
+            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-500/10">
+              <Link2 className="h-7 w-7 text-amber-600 dark:text-amber-400" />
+            </div>
+            <h3 className="text-center text-base font-semibold">
+              Add your {notConnectedPlatform ?? "affiliate"} tracking link first
+            </h3>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              To generate content for this offer, paste your personal affiliate
+              link from{" "}
+              <span className="font-medium capitalize text-foreground">
+                {notConnectedPlatform ?? "your platform"}
+              </span>
+              . Takes about 30 seconds.
+            </p>
+            <div className="mt-5 space-y-2">
+              <Link
+                href="/money-engine/settings"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                <Link2 className="h-4 w-4" /> Add tracking link
+              </Link>
+              <button
+                onClick={() => setNotConnectedOfferId(null)}
+                className="w-full rounded-lg border border-border py-2.5 text-sm font-medium hover:bg-muted"
+              >
+                Not now
+              </button>
+            </div>
+            <p className="mt-4 text-center text-[11px] text-muted-foreground">
+              Where do I get my link?{" "}
+              <a
+                href={
+                  notConnectedPlatform === "warriorplus"
+                    ? "https://warriorplus.com"
+                    : "https://app.impact.com"
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 text-primary underline"
+              >
+                Open {notConnectedPlatform ?? "platform"}{" "}
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════
+          DRAFTS modal — shows generated captions + images
+          ═══════════════════════════════════════════════ */}
       {drafts && (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-          onClick={() => { setDrafts(null); setPostResults(null); }}
+          onClick={() => {
+            setDrafts(null);
+            setPostResults(null);
+          }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
           >
             <div className="mb-4 flex items-center justify-between">
-              <div className="text-base font-semibold">Generated drafts ({drafts.length})</div>
+              <div>
+                <div className="text-base font-semibold">
+                  Generated drafts ({drafts.length})
+                </div>
+                {activeOfferTitle && (
+                  <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+                    {activeOfferTitle}
+                  </div>
+                )}
+              </div>
               <button
-                onClick={() => { setDrafts(null); setPostResults(null); }}
+                onClick={() => {
+                  setDrafts(null);
+                  setPostResults(null);
+                }}
                 className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
               >
                 <X className="h-4 w-4" />
@@ -400,7 +536,7 @@ export default function MoneyEnginePage() {
             <div className="space-y-4">
               {drafts.map((p) => (
                 <div key={p.id} className="rounded-lg border border-border/60 p-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <div className="text-xs font-semibold uppercase text-primary">
                       {p.trafficModule}
                     </div>
@@ -418,7 +554,6 @@ export default function MoneyEnginePage() {
                     </button>
                   </div>
 
-                  {/* ─── IMAGE — the actual fix ─── */}
                   {p.image ? (
                     <img
                       src={p.image}
@@ -426,8 +561,10 @@ export default function MoneyEnginePage() {
                       className="mt-2 w-full rounded-lg border border-border/60"
                     />
                   ) : (
-                    <div className="mt-2 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/30 text-xs text-muted-foreground">
-                      Image not generated — check Render logs
+                    <div className="mt-2 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+                      Image not generated — check Render logs for
+                      <code className="mx-1 rounded bg-background px-1">[imageGen]</code>
+                      warning
                     </div>
                   )}
 
@@ -444,17 +581,31 @@ export default function MoneyEnginePage() {
 
             {postResults && (
               <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
-                <div className="font-semibold">Post results:</div>
+                <div className="mb-1 font-semibold">Post results:</div>
                 {postResults.error ? (
-                  <div className="mt-1 text-rose-600 dark:text-rose-400">{postResults.error}</div>
+                  <div className="text-rose-600 dark:text-rose-400">
+                    {postResults.error}
+                  </div>
                 ) : (
-                  <div className="mt-1 space-y-1">
+                  <div className="space-y-1">
                     {(postResults.results ?? []).map((r: any, i: number) => (
                       <div key={i} className="flex items-center gap-2">
-                        <span className="capitalize font-medium">{r.platform}:</span>
+                        <span className="font-medium capitalize">{r.platform}:</span>
                         {r.result?.ok ? (
                           <span className="text-emerald-600 dark:text-emerald-400">
-                            ✓ {r.result.platformUrl ?? "posted"}
+                            ✓{" "}
+                            {r.result.platformUrl ? (
+                              <a
+                                href={r.result.platformUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline"
+                              >
+                                posted
+                              </a>
+                            ) : (
+                              "posted"
+                            )}
                           </span>
                         ) : (
                           <span className="text-rose-600 dark:text-rose-400">
@@ -469,11 +620,16 @@ export default function MoneyEnginePage() {
             )}
 
             <p className="mt-4 text-xs text-muted-foreground">
-              Images are 1080×1080 branded product cards. Connect platforms in{" "}
+              Connect platforms in{" "}
               <Link href="/social" className="text-primary underline">
                 Social Poster
               </Link>{" "}
-              to enable one-click posting.
+              to enable one-click posting. The tracking URL in each post is
+              yours — added in{" "}
+              <Link href="/money-engine/settings" className="text-primary underline">
+                My links
+              </Link>
+              .
             </p>
           </div>
         </div>
@@ -482,7 +638,15 @@ export default function MoneyEnginePage() {
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function StatCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+}) {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -507,8 +671,8 @@ function UpgradeGate() {
           Auto Money Engine — Premium
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
-          Connect Impact.com and PartnerStack once. Pull 50+ real brands and auto-generate video,
-          images, and Q&A content to promote them.
+          Connect Impact and WarriorPlus once. Paste your affiliate tracking
+          links. Auto-generate video, images, and Q&A content to promote them.
         </p>
 
         <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border/60 bg-card p-5 text-left">
@@ -518,7 +682,7 @@ function UpgradeGate() {
           </div>
           <div className="mt-3 space-y-2 text-sm">
             {[
-              "Auto Money Engine — 50+ brands",
+              "Auto Money Engine — Impact + WarriorPlus",
               "Unlimited Q&A Finder searches",
               "Unlimited URL indexing",
               "Unlimited videos",
@@ -539,6 +703,9 @@ function UpgradeGate() {
         >
           <Crown className="h-4 w-4" /> Upgrade to Premium — $35/mo
         </Link>
+        <p className="mt-4 text-xs text-muted-foreground">
+          One fee unlocks every premium module. Cancel anytime.
+        </p>
       </div>
     </div>
   );
