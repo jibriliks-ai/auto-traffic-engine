@@ -127,23 +127,41 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Offer not found" }, { status: 404 });
   }
 
-  // Resolve personal affiliate link if possible. If not connected, we still
-  // generate content and save as draft — the link is filled on Phase 2.
-  let affiliateLink = "PENDING_CONNECTION";
+  // ── STEP 1: Resolve the user's pasted tracking link ──
+  // If they haven't added one for this offer/platform, fail fast with a
+  // clear error so the UI can show the "Add tracking link" modal instead
+  // of wasting AI calls.
+  let affiliateLink: string;
   try {
     affiliateLink = await getPersonalAffiliateLink(userId, {
       platform: offer.platform,
       offerId: offer.offerId,
+      title: offer.title,
       affiliateLinkTemplate: offer.affiliateLinkTemplate,
     });
-  } catch {
-    // expected until real platform clients land
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    if (msg.includes("NOT_CONNECTED")) {
+      return NextResponse.json(
+        {
+          error: `Please add your ${offer.platform} tracking link first. Go to Money Engine → My links.`,
+          code: "NOT_CONNECTED",
+          platform: offer.platform,
+          offerTitle: offer.title,
+        },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      { error: msg || "Could not resolve affiliate link" },
+      { status: 500 }
+    );
   }
 
+  // ── STEP 2: Generate text content for each traffic module ──
   const created: any[] = [];
   const errors: string[] = [];
 
-  // ── Step 1: Generate text content for each traffic module ──
   for (const trafficModule of modules) {
     try {
       const { system, user } = buildPrompt(offer, trafficModule);
@@ -157,7 +175,6 @@ export async function POST(req: Request) {
 
       const parsed = extractJson(raw) ?? { caption: raw };
 
-      // Normalize across module shapes
       let caption = "";
       let script = "";
       if (trafficModule === "tiktok") {
@@ -202,10 +219,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── Step 2: Generate branded social images in parallel ──
-  // One 1080×1080 image per traffic module. Same base product image,
-  // but each is regenerated to keep costs predictable and allow
-  // per-module customization later.
+  // ── STEP 3: Generate branded social images in parallel ──
   const imagesByModule: Record<string, string> = {};
 
   if (offer.imageUrl && created.length > 0) {
@@ -220,9 +234,7 @@ export async function POST(req: Request) {
     const badge =
       offer.originalPrice && offer.frontEndPrice
         ? `${Math.round(
-            (1 -
-              Number(offer.frontEndPrice) / Number(offer.originalPrice)) *
-              100
+            (1 - Number(offer.frontEndPrice) / Number(offer.originalPrice)) * 100
           )}% OFF`
         : undefined;
 
@@ -240,16 +252,17 @@ export async function POST(req: Request) {
           });
           imagesByModule[p.trafficModule] = dataUrl;
         } catch (e: any) {
-          // Non-fatal — the text content is still valid without the image
           console.warn(
-            `[generate-content] Image failed for ${p.trafficModule}: ${e?.message ?? e}`
+            `[generate-content] Image failed for ${p.trafficModule}: ${
+              e?.message ?? e
+            }`
           );
         }
       })
     );
   }
 
-  // ── Step 3: Return posts with their matching images ──
+  // ── STEP 4: Return posts with their matching images ──
   return NextResponse.json({
     ok: errors.length === 0,
     posts: created.map((p: any) => ({
@@ -257,6 +270,7 @@ export async function POST(req: Request) {
       image: imagesByModule[p.trafficModule] ?? null,
     })),
     errors,
-    linkResolved: affiliateLink !== "PENDING_CONNECTION",
+    linkResolved: true,
+    affiliateLink,
   });
 }
