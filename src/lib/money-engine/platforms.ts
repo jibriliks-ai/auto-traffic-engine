@@ -5,14 +5,20 @@ export interface PlatformConfig {
   name: string;
   color: string;
   description: string;
-  howTo: string[];      // Step-by-step for getting the tracking link
-  linkExample: string;  // Example URL pattern
-  dashboardUrl: string; // Where they get their links
+  howTo: string[];       // Step-by-step guide for getting the tracking link
+  linkExample: string;   // Example URL pattern
+  dashboardUrl: string;  // Where the user gets their links
 }
 
 /**
- * Only 2 platforms. Both use the same "paste tracking link" method.
- * No API, no SID, no Token.
+ * Only 2 platforms supported. Both use the "paste tracking link" method —
+ * no API, no SID, no Token. Users grab their affiliate link from the
+ * platform dashboard and paste it into the app.
+ *
+ * The PLATFORM_CONFIG array drives:
+ *   - /money-engine/settings page (connect cards + Add Link modal)
+ *   - /money-engine page (NOT_CONNECTED modal help text)
+ *   - linkResolver.ts (platform validation)
  */
 export const PLATFORM_CONFIG: PlatformConfig[] = [
   {

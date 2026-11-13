@@ -1,60 +1,30 @@
 import { prisma } from "@/lib/prisma";
 import type { PlatformId, ProductType, RawOffer, SyncResult } from "./types";
-import {
-  passesDigitalFilter,
-  passesPhysicalFilter,
-  scoreOffer,
-} from "./scoring";
+import { scoreOffer } from "./scoring";
 import { MOCK_DIGITAL, MOCK_PHYSICAL } from "./mockData";
 
 /**
- * Only two networks per Final Clean Build v2 spec.
- * Jumia, AliExpress, Walmart, Adidas, Konga = brands inside Impact.
- * Monday, HubSpot, Slack, Webflow = brands inside PartnerStack.
+ * Only 2 platforms per spec. Both are connected via the paste-tracking-link
+ * method — no API keys needed. `syncAll()` now just loads the mock catalog
+ * into the DB so users have offers to browse and generate content from.
+ * Their real affiliate link comes from `UserTrackingLink`, not from this sync.
  */
-const DIGITAL_PLATFORMS: PlatformId[] = ["impact", "partnerstack"];
+const DIGITAL_PLATFORMS: PlatformId[] = ["impact", "warriorplus"];
 const PHYSICAL_PLATFORMS: PlatformId[] = ["impact"];
-
-function hasKey(platform: PlatformId): boolean {
-  if (platform === "impact") {
-    return Boolean(process.env.IMPACT_TOKEN && process.env.IMPACT_ACCOUNT_ID);
-  }
-  if (platform === "partnerstack") {
-    return Boolean(
-      process.env.PARTNERSTACK_PUBLIC_KEY && process.env.PARTNERSTACK_SECRET_KEY
-    );
-  }
-  return false;
-}
 
 async function fetchForPlatform(
   platform: PlatformId,
   productType: ProductType
 ): Promise<{ offers: RawOffer[]; mock: boolean }> {
-  if (!hasKey(platform)) {
-    // Mock fallback — spec §8 requires the demo dashboard to work with no keys.
-    const pool = productType === "digital" ? MOCK_DIGITAL : MOCK_PHYSICAL;
-    const filtered = pool.filter((o) => o.platform === platform);
-    const offers =
-      filtered.length > 0
-        ? filtered
-        : (productType === "digital" ? MOCK_DIGITAL : MOCK_PHYSICAL).slice(0, 2);
-    return { offers, mock: true };
-  }
-
-  // ─── Phase 2 — real platform fetchers go here ───
-  // Impact:
-  //   GET https://api.impact.com/Mediapartners/{ACCOUNT_ID}/Campaigns
-  //   Auth: Basic base64(SID:TOKEN)
-  //   Map campaigns → RawOffer[] (Jumia, Konga, Walmart, Adidas, etc.)
-  //
-  // PartnerStack:
-  //   GET https://api.partnerstack.com/api/v2/offers
-  //   Auth: Bearer PARTNERSTACK_API_KEY, X-Partner-Id header
-  //   Map offers → RawOffer[] (Monday, HubSpot, Notion, etc.)
-  //
-  // Both return normalized RawOffer[] — the caller handles filtering + scoring.
-  throw new Error(`NOT_IMPLEMENTED:${platform}:fetch`);
+  // No real API calls anymore — always use mock catalog.
+  // Real affiliate links are supplied by the user via UserTrackingLink.
+  const pool = productType === "digital" ? MOCK_DIGITAL : MOCK_PHYSICAL;
+  const filtered = pool.filter((o) => o.platform === platform);
+  const offers =
+    filtered.length > 0
+      ? filtered
+      : (productType === "digital" ? MOCK_DIGITAL : MOCK_PHYSICAL).slice(0, 2);
+  return { offers, mock: true };
 }
 
 async function syncOne(
@@ -64,13 +34,10 @@ async function syncOne(
   try {
     const { offers, mock } = await fetchForPlatform(platform, productType);
 
-    const passing = offers.filter((o) =>
-      productType === "digital"
-        ? passesDigitalFilter(o)
-        : passesPhysicalFilter(o)
-    );
-
-    const scored = passing.map(scoreOffer);
+    // Real Impact data doesn't have EPC/refund info at campaign level. We
+    // accept all offers from the mock catalog without applying strict filters,
+    // since these are curated demo entries already.
+    const scored = offers.map(scoreOffer);
 
     for (const o of scored) {
       const data = {
@@ -117,7 +84,7 @@ async function syncOne(
       platform,
       productType,
       fetched: offers.length,
-      kept: passing.length,
+      kept: scored.length,
       mock,
     };
   } catch (e: any) {

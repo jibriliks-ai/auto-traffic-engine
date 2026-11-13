@@ -1,3 +1,12 @@
+import type { RawOffer } from "./types";
+
+/**
+ * Mock offers — used for the demo catalog when users haven't added real
+ * tracking links yet. Only 2 platforms supported: Impact + WarriorPlus.
+ *
+ * Physical brands (Jumia, AliExpress, Walmart, Adidas, Konga) are modeled as
+ * "vendor" inside Impact — they're campaigns INSIDE Impact, not platforms.
+ */
 export const MOCK_DIGITAL: RawOffer[] = [
   {
     productType: "digital",
@@ -96,3 +105,88 @@ export const MOCK_DIGITAL: RawOffer[] = [
     imageUrl: "https://picsum.photos/seed/leadmagnet/400/400",
   },
 ];
+
+export const MOCK_PHYSICAL: RawOffer[] = [
+  {
+    productType: "physical",
+    platform: "impact",
+    offerId: "impact-mock-jumia",
+    title: "Jumia NG — Wireless Earbuds Pro",
+    vendor: "Jumia NG",
+    category: "Gadgets",
+    frontEndPrice: 12.99,
+    originalPrice: 39.99,
+    commissionPct: 12,
+    commissionAmount: 1.56,
+    orders7days: 8420,
+    rating: 4.6,
+    refundRate: 5,
+    imageUrl: "https://picsum.photos/seed/earbuds/400/400",
+  },
+  {
+    productType: "physical",
+    platform: "impact",
+    offerId: "impact-mock-ali",
+    title: "AliExpress — Mini Air Fryer 2.5L",
+    vendor: "AliExpress",
+    category: "Kitchen",
+    frontEndPrice: 24.99,
+    originalPrice: 59.99,
+    commissionPct: 9,
+    commissionAmount: 2.25,
+    orders7days: 1240,
+    rating: 4.7,
+    refundRate: 3,
+    imageUrl: "https://picsum.photos/seed/airfryer/400/400",
+  },
+  {
+    productType: "physical",
+    platform: "impact",
+    offerId: "impact-mock-walmart",
+    title: "Walmart — 20000mAh Fast Charge Power Bank",
+    vendor: "Walmart",
+    category: "Gadgets",
+    frontEndPrice: 18.5,
+    originalPrice: 29,
+    commissionPct: 10,
+    commissionAmount: 1.85,
+    orders7days: 610,
+    rating: 4.4,
+    refundRate: 6,
+    imageUrl: "https://picsum.photos/seed/powerbank/400/400",
+  },
+  {
+    productType: "physical",
+    platform: "impact",
+    offerId: "impact-mock-adidas",
+    title: "Adidas — Ultraboost Running Shoes",
+    vendor: "Adidas",
+    category: "Fashion",
+    frontEndPrice: 90,
+    originalPrice: 180,
+    commissionPct: 8,
+    commissionAmount: 7.2,
+    orders7days: 3400,
+    rating: 4.8,
+    refundRate: 4,
+    imageUrl: "https://picsum.photos/seed/adidas/400/400",
+  },
+  {
+    productType: "physical",
+    platform: "impact",
+    offerId: "impact-mock-konga",
+    title: "Konga — 5m Smart LED Strip WiFi",
+    vendor: "Konga",
+    category: "Gadgets",
+    frontEndPrice: 8.49,
+    originalPrice: 24.99,
+    commissionPct: 15,
+    commissionAmount: 1.27,
+    orders7days: 15200,
+    rating: 4.8,
+    refundRate: 2,
+    imageUrl: "https://picsum.photos/seed/ledstrip/400/400",
+  },
+];
+
+export const MOCK_ALL = [...MOCK_DIGITAL, ...MOCK_PHYSICAL];
