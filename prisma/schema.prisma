@@ -43,7 +43,7 @@ model User {
   // Billing
   payments Payment[]
 
-  // Money Engine — legacy (kept for backwards compatibility)
+  // Money Engine — legacy
   affiliateAccounts UserAffiliateAccount[]
   moneyEnginePosts  MoneyEnginePost[]
   moneyEngineClicks MoneyEngineClick[]
@@ -54,18 +54,18 @@ model User {
   moneyEngineLinkClicks MoneyEngineLinkClick[]
   linkToVideoJobs       LinkToVideoJob[]
 
-  // Sales Copy (unique Lemmy + Answer posts)
+  // Sales Copy
   salesCopy MoneyEngineSalesCopy[]
   usedHooks MoneyEngineUsedHook[]
 
-  // IndexNow submissions
+  // IndexNow
   indexNowSubmissions IndexNowSubmission[]
 
   // Social Poster
   socialConnections SocialConnection[]
   socialPosts       SocialPost[]
 
-  // User tracking links (paste-your-affiliate-link method — replaces API connections)
+  // User tracking links (paste-your-affiliate-link method)
   trackingLinks UserTrackingLink[]
 }
 
@@ -250,8 +250,7 @@ model PasswordResetToken {
 // AUTO MONEY ENGINE
 // ═══════════════════════════════════════════════════════════
 
-// LEGACY — kept for backwards compatibility but no longer used.
-// User connections are now handled by UserTrackingLink (paste-link method).
+// LEGACY — kept for backwards compatibility but not used by the app.
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
@@ -578,32 +577,51 @@ model SocialPost {
 }
 
 // ═══════════════════════════════════════════════════════════
-// USER TRACKING LINKS — the "paste your affiliate link" method
-// Replaces API-based connections. Works for any affiliate platform.
+// USER TRACKING LINKS — paste-affiliate-link method
 // ═══════════════════════════════════════════════════════════
 
 model UserTrackingLink {
   id              String   @id @default(cuid())
   userId          String
   platform        String // "impact" | "warriorplus"
-  label           String // User's friendly name (e.g. "Tecno Spark 20")
+  label           String
   productName     String
   productImageUrl String?  @db.Text
-  merchantUrl     String   @db.Text // Where the buyer lands
-  trackingUrl     String   @db.Text // User's affiliate tracking URL
+  merchantUrl     String   @db.Text
+  trackingUrl     String   @db.Text
   price           Decimal? @db.Decimal(10, 2)
   originalPrice   Decimal? @db.Decimal(10, 2)
   currency        String   @default("USD")
   category        String?
   description     String?  @db.Text
-  offerId         String? // Optional link to a catalog MoneyEngineOffer
+  offerId         String?
   isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+
+  // Cloaked redirect (real affiliate URL never exposed)
+  slug     String? @unique
+  shortUrl String? @db.Text
+
+  // Auto-scraped data
+  scrapedTitle       String? @db.Text
+  scrapedImage       String? @db.Text
+  scrapedPrice       String?
+  scrapedDescription String? @db.Text
+  scrapedBrand       String?
+  scrapeStatus       String  @default("pending") // pending | success | failed
+  scrapeError        String? @db.Text
+
+  // Auto-generated marketing content
+  generatedImage    String?   @db.Text
+  generatedSnippets String?   @db.Text
+  generatedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, platform])
   @@index([userId, isActive])
+  @@index([slug])
   @@map("user_tracking_links")
 }
