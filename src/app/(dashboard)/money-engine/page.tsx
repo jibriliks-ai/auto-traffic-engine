@@ -1,75 +1,56 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
-  Sparkles, RefreshCw, TrendingUp, DollarSign, Package, Cpu,
-  Loader2, AlertTriangle, Settings, Wand2, X, Crown, Lock, Film,
-  FileText, Share2, Link2, ExternalLink,
+  Plus,
+  Loader2,
+  AlertTriangle,
+  X,
+  Crown,
+  Lock,
+  Share2,
+  Copy,
+  Check,
+  Trash2,
+  ExternalLink,
+  Link2,
+  Sparkles,
+  Package,
 } from "lucide-react";
+import { PLATFORM_CONFIG } from "@/lib/money-engine/platforms";
 
-type Offer = {
+type TrackingLink = {
   id: string;
-  productType: "digital" | "physical";
   platform: string;
-  title: string;
-  imageUrl: string | null;
-  frontEndPrice: string | null;
+  label: string;
+  productName: string;
+  productImageUrl: string | null;
+  merchantUrl: string;
+  trackingUrl: string;
+  slug: string | null;
+  shortUrl: string | null;
+  price: string | null;
   originalPrice: string | null;
-  commissionAmount: string | null;
-  commissionPct: string | null;
-  epc: string;
-  orders7days: number;
-  score: string;
-  status: string;
-  priority: string;
-  isRecurring: boolean;
+  currency: string;
+  category: string | null;
+  description: string | null;
+  scrapeStatus: string;
+  scrapeError: string | null;
+  generatedImage: string | null;
+  generatedSnippets: string | null;
+  isActive: boolean;
+  createdAt: string;
 };
-
-type Stats = { totalActive: number; digitalCount: number; physicalCount: number };
-
-type GeneratedPost = {
-  id: string;
-  trafficModule: string;
-  caption: string;
-  script: string;
-  image?: string | null;
-  affiliateLink?: string;
-};
-
-const TABS = [
-  { key: "all", label: "All" },
-  { key: "digital", label: "Digital" },
-  { key: "physical", label: "Physical" },
-] as const;
-
-const MODULES = ["tiktok", "facebook", "x", "youtube"] as const;
-
-// Only these platforms are supported via the paste-tracking-link method.
-const SUPPORTED_PLATFORMS = new Set(["impact", "warriorplus"]);
 
 export default function MoneyEnginePage() {
   const { data: session, status } = useSession();
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [tab, setTab] = useState<"all" | "digital" | "physical">("all");
+  const [links, setLinks] = useState<TrackingLink[]>([]);
   const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState("");
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [generatingSalesCopy, setGeneratingSalesCopy] = useState<string | null>(null);
-  const [posting, setPosting] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<GeneratedPost[] | null>(null);
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [activeOfferId, setActiveOfferId] = useState<string | null>(null);
-  const [activeOfferTitle, setActiveOfferTitle] = useState<string | null>(null);
-  const [activeOfferPlatform, setActiveOfferPlatform] = useState<string | null>(null);
-  const [postResults, setPostResults] = useState<any>(null);
-
-  // "Add tracking link" modal — shown when Generate hits NOT_CONNECTED
-  const [notConnectedOfferId, setNotConnectedOfferId] = useState<string | null>(null);
-  const [notConnectedPlatform, setNotConnectedPlatform] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [snippetsFor, setSnippetsFor] = useState<TrackingLink | null>(null);
 
   const plan = (session?.user as any)?.plan ?? "free";
   const isAdmin = (session?.user as any)?.isAdmin === true;
@@ -79,18 +60,10 @@ export default function MoneyEnginePage() {
     setLoading(true);
     setError("");
     try {
-      const qs = tab === "all" ? "" : `?product_type=${tab}`;
-      const res = await fetch(`/api/money-engine/offers${qs}`);
+      const res = await fetch("/api/money-engine/tracking-links");
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load offers");
-
-      // Filter out any legacy PartnerStack offers that may exist from older syncs
-      const filtered = (data.offers ?? []).filter((o: Offer) =>
-        SUPPORTED_PLATFORMS.has(o.platform)
-      );
-
-      setOffers(filtered);
-      setStats(data.stats ?? null);
+      if (!res.ok) throw new Error(data.error ?? "Failed to load");
+      setLinks(data.links ?? []);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -98,139 +71,21 @@ export default function MoneyEnginePage() {
     }
   }
 
-  async function seedMock() {
-    setSeeding(true);
-    setError("");
-    try {
-      const res = await fetch("/api/money-engine/seed-mock", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Load failed");
-      await load();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSeeding(false);
-    }
-  }
-
-  async function generate(offerId: string) {
-    const offer = offers.find((o) => o.id === offerId);
-    setGenerating(offerId);
-    setActiveOfferId(offerId);
-    setActiveOfferTitle(offer?.title ?? null);
-    setActiveOfferPlatform(offer?.platform ?? null);
-    setDrafts(null);
-    setDraftError(null);
-    setPostResults(null);
-
-    try {
-      const res = await fetch("/api/money-engine/generate-content", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId, trafficModules: MODULES }),
-      });
-      const data = await res.json();
-
-      // Case 1: server returned an error indicating the user hasn't added a tracking link
-      if (!res.ok) {
-        const msg = String(data.error ?? "").toLowerCase();
-        if (
-          msg.includes("not_connected") ||
-          msg.includes("not connected") ||
-          msg.includes("tracking link") ||
-          msg.includes("no affiliate")
-        ) {
-          setNotConnectedOfferId(offerId);
-          setNotConnectedPlatform(offer?.platform ?? null);
-          setGenerating(null);
-          return;
-        }
-        throw new Error(data.error ?? "Generation failed");
-      }
-
-      const posts: GeneratedPost[] = data.posts ?? [];
-
-      // Case 2: server succeeded but no link resolved for this offer
-      if (posts.length > 0 && posts[0].affiliateLink === "PENDING_CONNECTION") {
-        setNotConnectedOfferId(offerId);
-        setNotConnectedPlatform(offer?.platform ?? null);
-        setGenerating(null);
-        return;
-      }
-
-      setDrafts(posts);
-      if (data.errors?.length) setDraftError(data.errors.join(" · "));
-    } catch (e: any) {
-      const msg = String(e.message ?? "").toLowerCase();
-      if (msg.includes("not_connected") || msg.includes("not connected")) {
-        setNotConnectedOfferId(offerId);
-        setNotConnectedPlatform(offer?.platform ?? null);
-      } else {
-        setDraftError(e.message);
-      }
-    } finally {
-      setGenerating(null);
-    }
-  }
-
-  async function generateSalesCopy(offerId: string) {
-    setGeneratingSalesCopy(offerId);
-    try {
-      const res = await fetch("/api/money-engine/generate-sales-copy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerId }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      const lemmyTime = data.scheduledAt?.lemmy
-        ? new Date(data.scheduledAt.lemmy).toLocaleString()
-        : "soon";
-      const answerTime = data.scheduledAt?.answer
-        ? new Date(data.scheduledAt.answer).toLocaleString()
-        : "soon";
-      alert(
-        `✓ Sales copy generated for both platforms!\n\n` +
-          `Lemmy scheduled: ${lemmyTime}\n` +
-          `Answer scheduled: ${answerTime}\n\n` +
-          `Posts will auto-publish from the queue every 30 minutes.`
-      );
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
-    } finally {
-      setGeneratingSalesCopy(null);
-    }
-  }
-
-  async function postDraftToSocial(draft: GeneratedPost) {
-    if (!activeOfferId) return;
-    setPosting(draft.id);
-    setPostResults(null);
-    try {
-      const res = await fetch("/api/social/post-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offerId: activeOfferId,
-          caption: draft.caption,
-          platforms: ["telegram", "bluesky", "mastodon"],
-          useGeneratedImage: true,
-        }),
-      });
-      const data = await res.json();
-      setPostResults(data);
-      if (!res.ok) throw new Error(data.error ?? "Post failed");
-    } catch (e: any) {
-      setPostResults({ error: e.message });
-    } finally {
-      setPosting(null);
-    }
-  }
-
   useEffect(() => {
     if (status === "authenticated" && isUnlocked) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, status, isUnlocked]);
+  }, [status, isUnlocked]);
+
+  async function deleteLink(id: string) {
+    if (
+      !confirm(
+        "Delete this link? Content already generated keeps working, but the /go/ redirect will stop."
+      )
+    )
+      return;
+    await fetch(`/api/money-engine/tracking-links/${id}`, { method: "DELETE" });
+    load();
+  }
 
   if (status === "loading") {
     return (
@@ -240,293 +95,278 @@ export default function MoneyEnginePage() {
     );
   }
 
-  if (!isUnlocked) {
-    return <UpgradeGate />;
-  }
+  if (!isUnlocked) return <UpgradeGate />;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Auto Money Engine</h1>
-          <p className="mt-1 text-sm text-muted-foreground sm:text-base">
-            2 networks · 50+ brands. Impact + WarriorPlus, connected via your own tracking links.
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            Auto Money Engine
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Add your affiliate links once. We handle the rest — branded images,
+            marketing copy, cloaked redirects, social posting.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href="/money-engine/settings"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-          >
-            <Settings className="h-4 w-4" /> My links
-          </Link>
-          <button
-            onClick={seedMock}
-            disabled={seeding}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-          >
-            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            {seeding ? "Loading…" : offers.length === 0 ? "Load Demo Offers" : "Refresh"}
-          </button>
-        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+        >
+          <Plus className="h-4 w-4" /> Add link
+        </button>
       </div>
 
-      {/* Error banner */}
       {error && (
         <div className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="break-words">{error}</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard icon={<Sparkles className="h-4 w-4" />} label="Active Offers" value={stats?.totalActive ?? 0} />
-        <StatCard icon={<Cpu className="h-4 w-4" />} label="Digital" value={stats?.digitalCount ?? 0} />
-        <StatCard icon={<Package className="h-4 w-4" />} label="Physical" value={stats?.physicalCount ?? 0} />
-      </div>
+      {loading ? (
+        <div className="rounded-xl border border-border/60 bg-card p-16 text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
+        </div>
+      ) : links.length === 0 ? (
+        <EmptyState onAdd={() => setAdding(true)} />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {links.map((l) => (
+            <LinkCard
+              key={l.id}
+              link={l}
+              onDelete={() => deleteLink(l.id)}
+              onShowSnippets={() => setSnippetsFor(l)}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-border/60">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-              tab === t.key
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {adding && (
+        <AddLinkModal
+          onClose={() => setAdding(false)}
+          onSuccess={() => {
+            setAdding(false);
+            load();
+          }}
+        />
+      )}
 
-      {/* Offers list */}
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
-        {loading ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Loader2 className="mx-auto mb-2 h-6 w-6 animate-spin text-primary" /> Loading offers…
-          </div>
-        ) : offers.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            No offers yet. Click <strong>Load Demo Offers</strong> to preview mock offers from Impact + WarriorPlus.
-          </div>
+      {snippetsFor && (
+        <SnippetsModal
+          link={snippetsFor}
+          onClose={() => setSnippetsFor(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function LinkCard({
+  link,
+  onDelete,
+  onShowSnippets,
+}: {
+  link: TrackingLink;
+  onDelete: () => void;
+  onShowSnippets: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const isReady = link.scrapeStatus === "success" && link.shortUrl;
+
+  function copyUrl() {
+    if (!link.shortUrl) return;
+    navigator.clipboard.writeText(link.shortUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
+      <div className="relative aspect-square bg-muted">
+        {link.generatedImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={link.generatedImage}
+            alt={link.productName}
+            className="h-full w-full object-cover"
+          />
+        ) : link.productImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={link.productImageUrl}
+            alt={link.productName}
+            className="h-full w-full object-cover opacity-80"
+          />
         ) : (
-          <div className="divide-y divide-border/60">
-            {offers.map((o) => (
-              <div key={o.id} className="flex flex-wrap items-start gap-3 p-4">
-                <img
-                  src={o.imageUrl ?? "https://via.placeholder.com/64"}
-                  alt=""
-                  className="h-14 w-14 shrink-0 rounded-lg bg-muted object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
-                        o.productType === "digital"
-                          ? "bg-primary/10 text-primary"
-                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                      }`}
-                    >
-                      {o.productType}
-                    </span>
-                    <span className="text-xs uppercase text-muted-foreground">{o.platform}</span>
-                    {o.isRecurring && (
-                      <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
-                        🔁 Recurring
-                      </span>
-                    )}
-                    {o.priority === "high" && (
-                      <span className="rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-yellow-600 dark:text-yellow-400">
-                        Winner
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-sm font-medium">{o.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                    {o.frontEndPrice && (
-                      <span className="inline-flex items-center gap-1">
-                        <DollarSign className="h-3 w-3" /> ${Number(o.frontEndPrice).toFixed(2)}
-                        {o.originalPrice && (
-                          <span className="line-through opacity-60">
-                            ${Number(o.originalPrice).toFixed(2)}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    <span>
-                      {o.productType === "digital"
-                        ? `EPC $${Number(o.epc).toFixed(2)}`
-                        : `${o.orders7days.toLocaleString()} orders/wk`}
-                    </span>
-                    {o.commissionAmount && (
-                      <span className="inline-flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" /> ${Number(o.commissionAmount).toFixed(2)}
-                        {o.commissionPct && (
-                          <span className="opacity-70">
-                            ({Number(o.commissionPct).toFixed(0)}%)
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    <span className="font-semibold text-foreground">
-                      Score {Number(o.score).toFixed(1)}
-                    </span>
-                  </div>
-                </div>
+          <div className="grid h-full place-items-center text-muted-foreground">
+            <Package className="h-10 w-10 opacity-40" />
+          </div>
+        )}
+        <button
+          onClick={onDelete}
+          className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-black/60 text-white hover:bg-black/80"
+          title="Delete"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+        <span className="absolute left-2 top-2 rounded-md bg-primary px-2 py-1 text-[10px] font-bold uppercase text-primary-foreground">
+          {link.platform}
+        </span>
+      </div>
 
-                <div className="flex shrink-0 flex-wrap gap-1.5">
-                  <button
-                    onClick={() => generate(o.id)}
-                    disabled={generating === o.id}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/20 disabled:opacity-50"
-                    title="Generate social captions + branded images"
-                  >
-                    {generating === o.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Wand2 className="h-3 w-3" />
-                    )}
-                    {generating === o.id ? "Generating…" : "Generate"}
-                  </button>
-                  <Link
-                    href={`/video?offerId=${o.id}`}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90"
-                  >
-                    <Film className="h-3 w-3" /> Make Video
-                  </Link>
-                  <button
-                    onClick={() => generateSalesCopy(o.id)}
-                    disabled={generatingSalesCopy === o.id}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 disabled:opacity-50 dark:text-emerald-400"
-                  >
-                    {generatingSalesCopy === o.id ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <FileText className="h-3 w-3" />
-                    )}
-                    {generatingSalesCopy === o.id ? "…" : "Sales Copy"}
-                  </button>
-                </div>
-              </div>
-            ))}
+      <div className="p-4">
+        <div className="line-clamp-2 text-sm font-semibold">
+          {link.productName}
+        </div>
+        <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          {link.price && (
+            <span className="font-semibold text-foreground">{link.price}</span>
+          )}
+          {link.originalPrice && (
+            <span className="line-through">{link.originalPrice}</span>
+          )}
+        </div>
+
+        {link.shortUrl && (
+          <div className="mt-3 flex items-center gap-1 rounded-lg bg-muted/50 p-2">
+            <code className="flex-1 truncate text-[11px]">{link.shortUrl}</code>
+            <button
+              onClick={copyUrl}
+              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground"
+              title="Copy cloaked URL"
+            >
+              {copied ? (
+                <Check className="h-3 w-3 text-emerald-500" />
+              ) : (
+                <Copy className="h-3 w-3" />
+              )}
+            </button>
+          </div>
+        )}
+
+        <div className="mt-3 flex gap-2">
+          {isReady ? (
+            <button
+              onClick={onShowSnippets}
+              className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:opacity-90"
+            >
+              <Sparkles className="h-3 w-3" /> Post to social
+            </button>
+          ) : (
+            <div className="flex h-8 flex-1 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
+              {link.scrapeStatus === "pending"
+                ? "Processing…"
+                : "Setup failed"}
+            </div>
+          )}
+          <a
+            href={link.merchantUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium hover:bg-muted"
+            title="Open product page"
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+
+        {link.scrapeStatus === "failed" && link.scrapeError && (
+          <div className="mt-2 rounded-md bg-rose-500/10 p-2 text-[11px] text-rose-600 dark:text-rose-400">
+            {link.scrapeError.slice(0, 100)}
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* Info footer */}
-      <p className="text-xs text-muted-foreground">
-        Add your affiliate links in{" "}
-        <Link href="/money-engine/settings" className="text-primary underline">
-          My links
-        </Link>{" "}
-        — one per product you want to promote. Every video, image, and sales copy
-        you generate will contain your personal tracking URL. No API keys, no
-        SID, no tokens.
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="rounded-2xl border-2 border-dashed border-border/60 bg-card p-12 text-center">
+      <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
+        <Link2 className="h-7 w-7" />
+      </div>
+      <h2 className="text-lg font-semibold">No links yet</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+        Paste your first affiliate link. We&apos;ll scrape the product page,
+        generate a branded image, write marketing copy for 4 platforms, and
+        create a cloaked /go/ URL that hides your real affiliate link from
+        social media.
       </p>
+      <button
+        onClick={onAdd}
+        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
+      >
+        <Plus className="h-4 w-4" /> Add your first link
+      </button>
+    </div>
+  );
+}
 
-      {/* Draft error banner */}
-      {draftError && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
-          {draftError}
-        </div>
-      )}
+function AddLinkModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [platform, setPlatform] = useState<string>("impact");
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [merchantUrl, setMerchantUrl] = useState("");
+  const [stage, setStage] = useState<"form" | "scraping" | "generating" | "error">(
+    "form"
+  );
+  const [error, setError] = useState<string | null>(null);
 
-      {/* ═══════════════════════════════════════════════
-          NOT CONNECTED modal — tells user to add their link
-          ═══════════════════════════════════════════════ */}
-      {notConnectedOfferId && (
-        <div
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4"
-          onClick={() => setNotConnectedOfferId(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl"
-          >
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-amber-500/10">
-              <Link2 className="h-7 w-7 text-amber-600 dark:text-amber-400" />
-            </div>
-            <h3 className="text-center text-base font-semibold">
-              Add your {notConnectedPlatform ?? "affiliate"} tracking link first
-            </h3>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              To generate content for this offer, paste your personal affiliate
-              link from{" "}
-              <span className="font-medium capitalize text-foreground">
-                {notConnectedPlatform ?? "your platform"}
-              </span>
-              . Takes about 30 seconds.
-            </p>
-            <div className="mt-5 space-y-2">
-              <Link
-                href="/money-engine/settings"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-              >
-                <Link2 className="h-4 w-4" /> Add tracking link
-              </Link>
+  async function submit() {
+    if (!trackingUrl.trim() || !merchantUrl.trim()) {
+      setError("Both URLs are required");
+      return;
+    }
+
+    setStage("scraping");
+    setError(null);
+
+    const genTimer = setTimeout(() => setStage("generating"), 8000);
+
+    try {
+      const res = await fetch("/api/money-engine/tracking-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, trackingUrl, merchantUrl }),
+      });
+      const data = await res.json();
+      clearTimeout(genTimer);
+      if (!res.ok || !data.ok) {
+        setStage("error");
+        setError(data.error ?? "Failed to process link");
+        return;
+      }
+      onSuccess();
+    } catch (e: any) {
+      clearTimeout(genTimer);
+      setStage("error");
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      onClick={stage === "form" ? onClose : undefined}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"
+      >
+        {stage === "form" && (
+          <>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-base font-semibold">Add affiliate link</h2>
               <button
-                onClick={() => setNotConnectedOfferId(null)}
-                className="w-full rounded-lg border border-border py-2.5 text-sm font-medium hover:bg-muted"
-              >
-                Not now
-              </button>
-            </div>
-            <p className="mt-4 text-center text-[11px] text-muted-foreground">
-              Where do I get my link?{" "}
-              <a
-                href={
-                  notConnectedPlatform === "warriorplus"
-                    ? "https://warriorplus.com"
-                    : "https://app.impact.com"
-                }
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-0.5 text-primary underline"
-              >
-                Open {notConnectedPlatform ?? "platform"}{" "}
-                <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════
-          DRAFTS modal — shows generated captions + images
-          ═══════════════════════════════════════════════ */}
-      {drafts && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-          onClick={() => {
-            setDrafts(null);
-            setPostResults(null);
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5 shadow-2xl"
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-base font-semibold">
-                  Generated drafts ({drafts.length})
-                </div>
-                {activeOfferTitle && (
-                  <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                    {activeOfferTitle}
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setDrafts(null);
-                  setPostResults(null);
-                }}
+                onClick={onClose}
                 className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
               >
                 <X className="h-4 w-4" />
@@ -534,128 +374,280 @@ export default function MoneyEnginePage() {
             </div>
 
             <div className="space-y-4">
-              {drafts.map((p) => (
-                <div key={p.id} className="rounded-lg border border-border/60 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold uppercase text-primary">
-                      {p.trafficModule}
-                    </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Platform
+                </label>
+                <div className="mt-1 flex gap-2">
+                  {PLATFORM_CONFIG.map((p) => (
                     <button
-                      onClick={() => postDraftToSocial(p)}
-                      disabled={posting === p.id}
-                      className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+                      key={p.id}
+                      onClick={() => setPlatform(p.id)}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                        platform === p.id
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border hover:bg-muted"
+                      }`}
                     >
-                      {posting === p.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Share2 className="h-3 w-3" />
-                      )}
-                      {posting === p.id ? "Posting…" : "Post to Social"}
+                      {p.name}
                     </button>
-                  </div>
-
-                  {p.image ? (
-                    <img
-                      src={p.image}
-                      alt={`${p.trafficModule} preview`}
-                      className="mt-2 w-full rounded-lg border border-border/60"
-                    />
-                  ) : (
-                    <div className="mt-2 flex aspect-square w-full items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/30 p-4 text-center text-xs text-muted-foreground">
-                      Image not generated — check Render logs for
-                      <code className="mx-1 rounded bg-background px-1">[imageGen]</code>
-                      warning
-                    </div>
-                  )}
-
-                  <div className="mt-2 whitespace-pre-wrap text-sm">{p.caption}</div>
-                  {p.script && p.trafficModule !== "x" && (
-                    <details className="mt-2 text-xs text-muted-foreground">
-                      <summary className="cursor-pointer">Script / tags</summary>
-                      <div className="mt-1 whitespace-pre-wrap">{p.script}</div>
-                    </details>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-
-            {postResults && (
-              <div className="mt-4 rounded-lg border border-border/60 bg-muted/30 p-3 text-xs">
-                <div className="mb-1 font-semibold">Post results:</div>
-                {postResults.error ? (
-                  <div className="text-rose-600 dark:text-rose-400">
-                    {postResults.error}
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {(postResults.results ?? []).map((r: any, i: number) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="font-medium capitalize">{r.platform}:</span>
-                        {r.result?.ok ? (
-                          <span className="text-emerald-600 dark:text-emerald-400">
-                            ✓{" "}
-                            {r.result.platformUrl ? (
-                              <a
-                                href={r.result.platformUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline"
-                              >
-                                posted
-                              </a>
-                            ) : (
-                              "posted"
-                            )}
-                          </span>
-                        ) : (
-                          <span className="text-rose-600 dark:text-rose-400">
-                            ✗ {r.result?.error ?? "failed"}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-            )}
 
-            <p className="mt-4 text-xs text-muted-foreground">
-              Connect platforms in{" "}
-              <Link href="/social" className="text-primary underline">
-                Social Poster
-              </Link>{" "}
-              to enable one-click posting. The tracking URL in each post is
-              yours — added in{" "}
-              <Link href="/money-engine/settings" className="text-primary underline">
-                My links
-              </Link>
-              .
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Your affiliate link
+                </label>
+                <input
+                  value={trackingUrl}
+                  onChange={(e) => setTrackingUrl(e.target.value)}
+                  placeholder="https://jumia-ng.sjv.io/c/123456/789/12345"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Never shown publicly — used only as the /go/ redirect target
+                </p>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Product page URL
+                </label>
+                <input
+                  value={merchantUrl}
+                  onChange={(e) => setMerchantUrl(e.target.value)}
+                  placeholder="https://jumia.com.ng/tecno-spark-20"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Where the product image and details come from
+                </p>
+              </div>
+
+              {error && (
+                <div className="rounded-lg bg-rose-500/10 p-2 text-xs text-rose-600 dark:text-rose-400">
+                  {error}
+                </div>
+              )}
+
+              <button
+                onClick={submit}
+                disabled={!trackingUrl.trim() || !merchantUrl.trim()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4" /> Detect and generate
+              </button>
+            </div>
+          </>
+        )}
+
+        {(stage === "scraping" || stage === "generating") && (
+          <div className="py-6 text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+            <h3 className="mt-4 text-base font-semibold">
+              {stage === "scraping"
+                ? "Reading product page…"
+                : "Generating content…"}
+            </h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {stage === "scraping"
+                ? "Extracting title, image, price, and brand"
+                : "Creating branded image + marketing copy for 4 platforms"}
+            </p>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              This takes 15–30 seconds
             </p>
           </div>
-        </div>
-      )}
+        )}
+
+        {stage === "error" && (
+          <div className="py-4 text-center">
+            <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" />
+            <h3 className="mt-3 text-base font-semibold">Something went wrong</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+            <button
+              onClick={() => {
+                setStage("form");
+                setError(null);
+              }}
+              className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function StatCard({
-  icon,
-  label,
-  value,
+function SnippetsModal({
+  link,
+  onClose,
 }: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
+  link: TrackingLink;
+  onClose: () => void;
 }) {
-  return (
-    <div className="rounded-xl border border-border/60 bg-card p-4">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <div className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
-          {icon}
+  const [posting, setPosting] = useState<string | null>(null);
+  const [postResult, setPostResult] = useState<any>(null);
+
+  let snippets: any = null;
+  if (link.generatedSnippets) {
+    try {
+      snippets = JSON.parse(link.generatedSnippets);
+    } catch {}
+  }
+
+  async function post(platformKey: string, caption: string) {
+    setPosting(platformKey);
+    setPostResult(null);
+    try {
+      const res = await fetch("/api/social/post-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId: null,
+          caption,
+          platforms: ["telegram", "bluesky", "mastodon"],
+          useGeneratedImage: false,
+          customImageBase64: link.generatedImage,
+        }),
+      });
+      const data = await res.json();
+      setPostResult(data);
+    } catch (e: any) {
+      setPostResult({ error: e.message });
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  if (!snippets) {
+    return (
+      <div
+        className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+        onClick={onClose}
+      >
+        <div className="w-full max-w-md rounded-2xl bg-card p-6 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
+          <p className="mt-3 text-sm">No snippets generated yet.</p>
+          <button
+            onClick={onClose}
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
+          >
+            Close
+          </button>
         </div>
-        {label}
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
+    );
+  }
+
+  const modules = [
+    { key: "tiktok", label: "TikTok", text: snippets.tiktok?.caption ?? "" },
+    {
+      key: "facebook",
+      label: "Facebook",
+      text: snippets.facebook?.caption ?? "",
+    },
+    {
+      key: "x",
+      label: "X (Twitter)",
+      text: (snippets.x?.tweets ?? []).join("\n\n"),
+    },
+    {
+      key: "youtube",
+      label: "YouTube",
+      text: `${snippets.youtube?.title ?? ""}\n\n${
+        snippets.youtube?.description ?? ""
+      }`,
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-base font-semibold">Marketing content</div>
+            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+              {link.productName}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {link.generatedImage && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={link.generatedImage}
+            alt=""
+            className="mb-4 w-full rounded-lg border border-border/60"
+          />
+        )}
+
+        <div className="space-y-3">
+          {modules.map((m) => (
+            <div
+              key={m.key}
+              className="rounded-lg border border-border/60 p-3"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase text-primary">
+                  {m.label}
+                </span>
+                <button
+                  onClick={() => post(m.key, m.text)}
+                  disabled={posting === m.key}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+                >
+                  {posting === m.key ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Share2 className="h-3 w-3" />
+                  )}
+                  Post
+                </button>
+              </div>
+              <div className="mt-2 whitespace-pre-wrap text-sm">{m.text}</div>
+            </div>
+          ))}
+        </div>
+
+        {postResult && (
+          <div className="mt-4 rounded-lg bg-muted/30 p-3 text-xs">
+            {postResult.error ? (
+              <div className="text-rose-600">{postResult.error}</div>
+            ) : (
+              <div className="space-y-1">
+                {(postResult.results ?? []).map((r: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="font-medium capitalize">{r.platform}:</span>
+                    {r.result?.ok ? (
+                      <span className="text-emerald-600">✓ posted</span>
+                    ) : (
+                      <span className="text-rose-600">
+                        ✗ {r.result?.error}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -670,42 +662,17 @@ function UpgradeGate() {
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           Auto Money Engine — Premium
         </h1>
-        <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground sm:text-base">
-          Connect Impact and WarriorPlus once. Paste your affiliate tracking
-          links. Auto-generate video, images, and Q&A content to promote them.
+        <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
+          Add your Impact and WarriorPlus affiliate links. We generate branded
+          images, marketing copy for 4 platforms, and cloaked /go/ redirects that
+          protect you from social media bans.
         </p>
-
-        <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border/60 bg-card p-5 text-left">
-          <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold">$35</span>
-            <span className="text-sm text-muted-foreground">/month</span>
-          </div>
-          <div className="mt-3 space-y-2 text-sm">
-            {[
-              "Auto Money Engine — Impact + WarriorPlus",
-              "Unlimited Q&A Finder searches",
-              "Unlimited URL indexing",
-              "Unlimited videos",
-              "Unlimited social posts",
-              "Up to 3 businesses",
-            ].map((f) => (
-              <div key={f} className="flex items-start gap-2">
-                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
         <Link
           href="/billing"
           className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
         >
-          <Crown className="h-4 w-4" /> Upgrade to Premium — $35/mo
+          <Crown className="h-4 w-4" /> Upgrade — $35/mo
         </Link>
-        <p className="mt-4 text-xs text-muted-foreground">
-          One fee unlocks every premium module. Cancel anytime.
-        </p>
       </div>
     </div>
   );
