@@ -1,37 +1,29 @@
 import sharp from "sharp";
 
 const SIZE = 1080;
-
-// Linux-safe font stack. DejaVu + Liberation are preinstalled on every
-// Render container. Arial is only reached on Windows/macOS dev machines.
-const FONT_STACK =
-  "DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif";
+const FONT_STACK = "DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif";
 
 export interface ImageGenInput {
   productImageUrl: string;
   title: string;
   price: string;
+  originalPrice?: string;
   brandName?: string;
   ctaText: string;
   brandColor: string;
   badge?: string;
+  urgencyLine?: string;
 }
 
 function esc(s: string): string {
   return s.replace(/[<>&'"]/g, (c) => {
     switch (c) {
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case "&":
-        return "&amp;";
-      case "'":
-        return "&#39;";
-      case '"':
-        return "&quot;";
-      default:
-        return c;
+      case "<": return "&lt;";
+      case ">": return "&gt;";
+      case "&": return "&amp;";
+      case "'": return "&#39;";
+      case '"': return "&quot;";
+      default: return c;
     }
   });
 }
@@ -43,10 +35,7 @@ function wrap(text: string, max: number, maxLines = 2): string[] {
   for (const w of words) {
     const candidate = (cur ? cur + " " : "") + w;
     if (candidate.length <= max) cur = candidate;
-    else {
-      if (cur) lines.push(cur);
-      cur = w;
-    }
+    else { if (cur) lines.push(cur); cur = w; }
     if (lines.length >= maxLines) break;
   }
   if (cur && lines.length < maxLines) lines.push(cur);
@@ -55,9 +44,7 @@ function wrap(text: string, max: number, maxLines = 2): string[] {
 
 async function fetchImage(url: string): Promise<Buffer> {
   if (url.startsWith("data:")) {
-    if (url.startsWith("data:image/svg")) {
-      throw new Error("SVG product images are not supported — use JPEG or PNG");
-    }
+    if (url.startsWith("data:image/svg")) throw new Error("SVG not supported");
     const base64 = url.split(",")[1];
     if (!base64) throw new Error("Invalid data URI");
     return Buffer.from(base64, "base64");
@@ -65,53 +52,26 @@ async function fetchImage(url: string): Promise<Buffer> {
   const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Image fetch failed: ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.slice(0, 200).includes(Buffer.from("<svg"))) {
-    throw new Error("SVG product images are not supported — use JPEG or PNG");
-  }
+  if (buf.slice(0, 200).includes(Buffer.from("<svg"))) throw new Error("SVG not supported");
   return buf;
 }
 
-/**
- * Renders an SVG string to a PNG buffer. Never throws.
- * Returns null if SVG rendering fails (missing fonts, malformed SVG,
- * librsvg quirks). Callers should treat null as "no overlay" and
- * continue — the final image is still valid.
- */
 async function safeRenderSvg(svg: string): Promise<Buffer | null> {
   try {
     return await sharp(Buffer.from(svg, "utf-8")).png().toBuffer();
   } catch (e: any) {
-    console.warn(
-      "[imageGen] SVG render failed (continuing without overlay):",
-      e?.message ?? e
-    );
+    console.warn("[imageGen] SVG render failed:", e?.message ?? e);
     return null;
   }
 }
 
-/**
- * Generates a branded 1080×1080 product image for social media.
- *
- * Layers (bottom → top):
- *   1. Brand-color → dark gradient with decorative circles
- *   2. Product image centered (~65% of canvas, aspect-preserved)
- *   3. Text overlay (badge, brand, title, price pill, CTA)
- *
- * Behaviour:
- *   - If product image fetch fails → throws (caller responds 500)
- *   - If overlay SVG fails → returns image WITHOUT text (still valid JPEG)
- *   - If overlay succeeds → returns full branded image
- *
- * Returns: { buffer, dataUrl }
- */
 export async function generateSocialImage(
   input: ImageGenInput
 ): Promise<{ buffer: Buffer; dataUrl: string }> {
   const productBuf = await fetchImage(input.productImageUrl);
   const brandColor = input.brandColor || "#4f46e5";
 
-  // 1. Product image — resize to 65% of canvas, preserve aspect, transparent pad
-  const productSize = Math.round(SIZE * 0.65);
+  const productSize = Math.round(SIZE * 0.78);
   const resizedProduct = await sharp(productBuf)
     .resize(productSize, productSize, {
       fit: "contain",
@@ -120,103 +80,87 @@ export async function generateSocialImage(
     .png()
     .toBuffer();
 
-  // 2. Background — gradient + decorative circles (no text, no fonts needed)
   const bgSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stop-color="${esc(brandColor)}"/>
         <stop offset="100%" stop-color="#0a0a0a"/>
       </linearGradient>
+      <radialGradient id="glow" cx="0.7" cy="0.3" r="0.6">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.10)"/>
+        <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+      </radialGradient>
     </defs>
     <rect width="${SIZE}" height="${SIZE}" fill="url(#bg)"/>
-    <circle cx="${Math.round(SIZE * 0.85)}" cy="${Math.round(
-    SIZE * 0.15
-  )}" r="${Math.round(SIZE * 0.45)}" fill="rgba(255,255,255,0.05)"/>
-    <circle cx="${Math.round(SIZE * 0.15)}" cy="${Math.round(
-    SIZE * 0.85
-  )}" r="${Math.round(SIZE * 0.35)}" fill="rgba(255,255,255,0.04)"/>
+    <rect width="${SIZE}" height="${SIZE}" fill="url(#glow)"/>
+    <circle cx="${Math.round(SIZE * 0.90)}" cy="${Math.round(SIZE * 0.10)}" r="${Math.round(SIZE * 0.42)}" fill="rgba(255,255,255,0.05)"/>
+    <circle cx="${Math.round(SIZE * 0.10)}" cy="${Math.round(SIZE * 0.90)}" r="${Math.round(SIZE * 0.35)}" fill="rgba(255,255,255,0.04)"/>
   </svg>`;
   const bg = await sharp(Buffer.from(bgSvg, "utf-8")).png().toBuffer();
 
-  // 3. Overlay — text layers
-  const titleLines = wrap(input.title || "", 22, 2);
-  const priceLine = (wrap(input.price || "", 32, 1)[0] ?? "").slice(0, 40);
-  const brandLine = (input.brandName ?? "").slice(0, 22);
+  const titleLines = wrap(input.title || "", 24, 2);
+  const brandLine = (input.brandName ?? "").slice(0, 24);
   const ctaLine = (input.ctaText || "").slice(0, 60);
-  const badgeLine = (input.badge ?? "").slice(0, 16);
-  const badgeW = badgeLine ? Math.min(400, badgeLine.length * 26 + 60) : 0;
+  const urgency = (input.urgencyLine ?? "").slice(0, 40);
+  const badgeLine = (input.badge ?? "").slice(0, 14);
+  const badgeW = badgeLine ? Math.max(220, badgeLine.length * 30 + 40) : 0;
+
+  const priceLine = (input.price || "").slice(0, 24);
+  const originalLine = (input.originalPrice || "").slice(0, 24);
+  const hasPrice = Boolean(priceLine);
+
+  const panelTop = SIZE - 380;
 
   const overlaySvg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}">
-    ${
-      badgeLine
-        ? `<rect x="40" y="40" width="${badgeW}" height="72" rx="36" fill="${esc(
-            brandColor
-          )}"/>
-      <text x="${40 + badgeW / 2}" y="88" font-family="${FONT_STACK}" font-size="34" font-weight="900" fill="white" text-anchor="middle">${esc(
-            badgeLine
-          )}</text>`
-        : ""
-    }
+    ${badgeLine ? `
+      <rect x="40" y="40" width="${badgeW}" height="88" rx="44" fill="#dc2626"/>
+      <text x="${40 + badgeW / 2}" y="98" font-family="${FONT_STACK}" font-size="40" font-weight="900" fill="white" text-anchor="middle">${esc(badgeLine)}</text>
+    ` : ""}
 
-    ${
-      brandLine
-        ? `<text x="${SIZE - 40}" y="92" font-family="${FONT_STACK}" font-size="32" font-weight="700" fill="rgba(255,255,255,0.92)" text-anchor="end">${esc(
-            brandLine
-          )}</text>`
-        : ""
-    }
+    ${brandLine ? `
+      <rect x="${SIZE - 40 - (brandLine.length * 18 + 60)}" y="52" width="${brandLine.length * 18 + 60}" height="64" rx="16" fill="rgba(0,0,0,0.55)"/>
+      <text x="${SIZE - 60}" y="96" font-family="${FONT_STACK}" font-size="30" font-weight="800" fill="white" text-anchor="end">${esc(brandLine)}</text>
+    ` : ""}
 
     <defs>
-      <linearGradient id="bgrad" x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-        <stop offset="100%" stop-color="rgba(0,0,0,0.92)"/>
+        <stop offset="35%" stop-color="rgba(0,0,0,0.88)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0.98)"/>
       </linearGradient>
     </defs>
-    <rect x="0" y="${SIZE - 400}" width="${SIZE}" height="400" fill="url(#bgrad)"/>
+    <rect x="0" y="${panelTop}" width="${SIZE}" height="380" fill="url(#panel)"/>
 
     ${titleLines
       .map(
         (l, i) =>
-          `<text x="${SIZE / 2}" y="${
-            SIZE - 270 + i * 58
-          }" font-family="${FONT_STACK}" font-size="50" font-weight="900" fill="white" text-anchor="middle">${esc(
-            l
-          )}</text>`
+          `<text x="60" y="${panelTop + 70 + i * 58}" font-family="${FONT_STACK}" font-size="52" font-weight="900" fill="white">${esc(l)}</text>`
       )
       .join("")}
 
-    ${
-      priceLine
-        ? `<rect x="60" y="${SIZE - 140}" width="${
-            SIZE - 120
-          }" height="86" rx="20" fill="${esc(brandColor)}"/>
-      <text x="${SIZE / 2}" y="${
-            SIZE - 82
-          }" font-family="${FONT_STACK}" font-size="48" font-weight="900" fill="white" text-anchor="middle">${esc(
-            priceLine
-          )}</text>`
-        : ""
-    }
+    ${hasPrice ? `
+      <text x="60" y="${panelTop + 70 + titleLines.length * 58 + 60}" font-family="${FONT_STACK}" font-size="60" font-weight="900" fill="${esc(brandColor)}">${esc(priceLine)}</text>
+    ` : ""}
 
-    ${
-      ctaLine
-        ? `<text x="${SIZE / 2}" y="${
-            SIZE - 24
-          }" font-family="${FONT_STACK}" font-size="26" font-weight="700" fill="rgba(255,255,255,0.85)" text-anchor="middle">${esc(
-            ctaLine
-          )}</text>`
-        : ""
-    }
+    ${originalLine ? `
+      <text x="${60 + (hasPrice ? priceLine.length * 32 : 0)}" y="${panelTop + 70 + titleLines.length * 58 + 60}" font-family="${FONT_STACK}" font-size="38" font-weight="700" fill="rgba(255,255,255,0.55)" text-decoration="line-through">${esc(originalLine)}</text>
+    ` : ""}
+
+    ${urgency ? `
+      <text x="60" y="${SIZE - 96}" font-family="${FONT_STACK}" font-size="30" font-weight="700" fill="rgba(255,255,255,0.75)">${esc(urgency)}</text>
+    ` : ""}
+
+    <rect x="${SIZE - 380}" y="${SIZE - 128}" width="320" height="80" rx="20" fill="${esc(brandColor)}"/>
+    <text x="${SIZE - 220}" y="${SIZE - 76}" font-family="${FONT_STACK}" font-size="30" font-weight="900" fill="white" text-anchor="middle">${esc(ctaLine.slice(0, 22))}</text>
   </svg>`;
 
   const overlay = await safeRenderSvg(overlaySvg);
 
-  // 4. Composite — inference only, no explicit sharp type annotations
-    const compositeInputs: any[] = [
+  const compositeInputs: any[] = [
     { input: bg, top: 0, left: 0 },
     {
       input: resizedProduct,
-      top: Math.round(SIZE * 0.15),
+      top: Math.round(SIZE * 0.10),
       left: Math.round((SIZE - productSize) / 2),
     },
   ];
@@ -234,7 +178,7 @@ export async function generateSocialImage(
     },
   })
     .composite(compositeInputs)
-    .jpeg({ quality: 90, progressive: true })
+    .jpeg({ quality: 92, progressive: true })
     .toBuffer();
 
   return {

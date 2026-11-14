@@ -43,7 +43,7 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
       return NextResponse.json({ ok: false, error: "No image — upload one manually" }, { status: 400 });
     }
 
-    const discount = computeDiscount(scraped.price, scraped.originalPrice);
+    const discount = computeDiscount(scraped.price ?? null, scraped.originalPrice ?? null);
     let generatedImage: string | null = null;
     try {
       const { dataUrl } = await generateSocialImage({

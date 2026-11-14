@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import QRCode from "qrcode";
 
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN ?? "https://growthbot-aprv.onrender.com";
+const APP_DOMAIN =
+  process.env.NEXT_PUBLIC_APP_DOMAIN ?? "https://growthbot-aprv.onrender.com";
 
 export interface CreateLinkInput {
   userId: string;
@@ -86,6 +87,53 @@ export async function createOrReuseLink(
   };
 }
 
+/**
+ * Generates a cloaked /go/{slug} URL for a UserTrackingLink and saves
+ * the slug+shortUrl back to the row. The real affiliate URL stays hidden.
+ */
+export async function createCloakedLink(input: {
+  trackingLinkId: string;
+  productName: string;
+  brand?: string | null;
+}): Promise<{ slug: string; shortUrl: string }> {
+  const clean = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 30);
+
+  const brand = clean(input.brand ?? "product");
+  const product = clean(input.productName || "item");
+  const base =
+    `${brand}-${product}`.replace(/^-+|-+$/g, "").slice(0, 45) || "link";
+
+  let slug = "";
+  for (let i = 0; i < 10; i++) {
+    const suffix = Math.floor(100 + Math.random() * 900).toString();
+    const candidate = `${base}-${suffix}`.slice(0, 60);
+    const existing = await prisma.userTrackingLink.findUnique({
+      where: { slug: candidate },
+    });
+    if (!existing) {
+      slug = candidate;
+      break;
+    }
+  }
+  if (!slug) {
+    slug = `${base}-${Date.now().toString(36)}`.slice(0, 60);
+  }
+
+  const shortUrl = `${APP_DOMAIN}/go/${slug}`;
+
+  await prisma.userTrackingLink.update({
+    where: { id: input.trackingLinkId },
+    data: { slug, shortUrl },
+  });
+
+  return { slug, shortUrl };
+}
+
 async function generateUniqueSlug(brand: string, product: string): Promise<string> {
   const clean = (s: string) =>
     s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30);
@@ -125,4 +173,3 @@ export async function updateLinkDestination(
     data: { destinationUrl: newDestinationUrl },
   });
 }
-
