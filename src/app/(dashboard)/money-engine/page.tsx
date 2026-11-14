@@ -4,20 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
-  Plus,
-  Loader2,
-  AlertTriangle,
-  X,
-  Crown,
-  Lock,
-  Share2,
-  Copy,
-  Check,
-  Trash2,
-  ExternalLink,
-  Link2,
-  Sparkles,
-  Package,
+  Plus, Loader2, AlertTriangle, X, Crown, Lock, Share2, Copy, Check,
+  Trash2, ExternalLink, Link2, Sparkles, Package, Pencil, Upload, RefreshCw,
 } from "lucide-react";
 import { PLATFORM_CONFIG } from "@/lib/money-engine/platforms";
 
@@ -38,8 +26,8 @@ type TrackingLink = {
   description: string | null;
   scrapeStatus: string;
   scrapeError: string | null;
-  generatedImage: string | null;
   generatedSnippets: string | null;
+  hasImage: boolean;
   isActive: boolean;
   createdAt: string;
 };
@@ -50,6 +38,7 @@ export default function MoneyEnginePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<TrackingLink | null>(null);
   const [snippetsFor, setSnippetsFor] = useState<TrackingLink | null>(null);
 
   const plan = (session?.user as any)?.plan ?? "free";
@@ -77,42 +66,26 @@ export default function MoneyEnginePage() {
   }, [status, isUnlocked]);
 
   async function deleteLink(id: string) {
-    if (
-      !confirm(
-        "Delete this link? Content already generated keeps working, but the /go/ redirect will stop."
-      )
-    )
-      return;
+    if (!confirm("Delete this link? The /go/ redirect will stop working immediately.")) return;
     await fetch(`/api/money-engine/tracking-links/${id}`, { method: "DELETE" });
     load();
   }
 
   if (status === "loading") {
-    return (
-      <div className="grid place-items-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
+    return <div className="grid place-items-center py-20"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
   }
-
   if (!isUnlocked) return <UpgradeGate />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            Auto Money Engine
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Auto Money Engine</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add your affiliate links once. We handle the rest — branded images,
-            marketing copy, cloaked redirects, social posting.
+            Add your affiliate links once. We handle the rest — branded images, marketing copy, cloaked redirects, social posting.
           </p>
         </div>
-        <button
-          onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
-        >
+        <button onClick={() => setAdding(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
           <Plus className="h-4 w-4" /> Add link
         </button>
       </div>
@@ -137,6 +110,7 @@ export default function MoneyEnginePage() {
               key={l.id}
               link={l}
               onDelete={() => deleteLink(l.id)}
+              onEdit={() => setEditing(l)}
               onShowSnippets={() => setSnippetsFor(l)}
             />
           ))}
@@ -146,18 +120,20 @@ export default function MoneyEnginePage() {
       {adding && (
         <AddLinkModal
           onClose={() => setAdding(false)}
-          onSuccess={() => {
-            setAdding(false);
-            load();
-          }}
+          onSuccess={() => { setAdding(false); load(); }}
+        />
+      )}
+
+      {editing && (
+        <EditLinkModal
+          link={editing}
+          onClose={() => setEditing(null)}
+          onSuccess={() => { setEditing(null); load(); }}
         />
       )}
 
       {snippetsFor && (
-        <SnippetsModal
-          link={snippetsFor}
-          onClose={() => setSnippetsFor(null)}
-        />
+        <SnippetsModal link={snippetsFor} onClose={() => setSnippetsFor(null)} />
       )}
     </div>
   );
@@ -166,14 +142,17 @@ export default function MoneyEnginePage() {
 function LinkCard({
   link,
   onDelete,
+  onEdit,
   onShowSnippets,
 }: {
   link: TrackingLink;
   onDelete: () => void;
+  onEdit: () => void;
   onShowSnippets: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const isReady = link.scrapeStatus === "success" && link.shortUrl;
+  const [imgFailed, setImgFailed] = useState(false);
+  const isReady = link.scrapeStatus === "success" && link.shortUrl && link.hasImage;
 
   function copyUrl() {
     if (!link.shortUrl) return;
@@ -185,89 +164,71 @@ function LinkCard({
   return (
     <div className="overflow-hidden rounded-xl border border-border/60 bg-card">
       <div className="relative aspect-square bg-muted">
-        {link.generatedImage ? (
+        {link.hasImage && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={link.generatedImage}
+            src={`/api/money-engine/tracking-links/${link.id}/image?v=${new Date(link.createdAt).getTime()}`}
             alt={link.productName}
             className="h-full w-full object-cover"
+            onError={() => setImgFailed(true)}
+            loading="lazy"
           />
-        ) : link.productImageUrl ? (
+        ) : link.productImageUrl && !imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={link.productImageUrl}
             alt={link.productName}
             className="h-full w-full object-cover opacity-80"
+            onError={() => setImgFailed(true)}
+            loading="lazy"
           />
         ) : (
           <div className="grid h-full place-items-center text-muted-foreground">
             <Package className="h-10 w-10 opacity-40" />
           </div>
         )}
-        <button
-          onClick={onDelete}
-          className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-lg bg-black/60 text-white hover:bg-black/80"
-          title="Delete"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+
+        <div className="absolute right-2 top-2 flex gap-1.5">
+          <button onClick={onEdit} className="grid h-8 w-8 place-items-center rounded-lg bg-black/60 text-white hover:bg-black/80" title="Edit">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button onClick={onDelete} className="grid h-8 w-8 place-items-center rounded-lg bg-black/60 text-white hover:bg-rose-600" title="Delete">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
         <span className="absolute left-2 top-2 rounded-md bg-primary px-2 py-1 text-[10px] font-bold uppercase text-primary-foreground">
           {link.platform}
         </span>
       </div>
 
       <div className="p-4">
-        <div className="line-clamp-2 text-sm font-semibold">
-          {link.productName}
-        </div>
+        <div className="line-clamp-2 text-sm font-semibold">{link.productName}</div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          {link.price && (
-            <span className="font-semibold text-foreground">{link.price}</span>
-          )}
-          {link.originalPrice && (
-            <span className="line-through">{link.originalPrice}</span>
-          )}
+          {link.price && <span className="font-semibold text-foreground">{link.price}</span>}
+          {link.originalPrice && <span className="line-through">{link.originalPrice}</span>}
         </div>
 
         {link.shortUrl && (
           <div className="mt-3 flex items-center gap-1 rounded-lg bg-muted/50 p-2">
             <code className="flex-1 truncate text-[11px]">{link.shortUrl}</code>
-            <button
-              onClick={copyUrl}
-              className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-              title="Copy cloaked URL"
-            >
-              {copied ? (
-                <Check className="h-3 w-3 text-emerald-500" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
+            <button onClick={copyUrl} className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground" title="Copy">
+              {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
             </button>
           </div>
         )}
 
         <div className="mt-3 flex gap-2">
           {isReady ? (
-            <button
-              onClick={onShowSnippets}
-              className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:opacity-90"
-            >
+            <button onClick={onShowSnippets} className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:opacity-90">
               <Sparkles className="h-3 w-3" /> Post to social
             </button>
           ) : (
-            <div className="flex h-8 flex-1 items-center justify-center rounded-lg bg-muted text-xs text-muted-foreground">
-              {link.scrapeStatus === "pending"
-                ? "Processing…"
-                : "Setup failed"}
-            </div>
+            <button onClick={onEdit} className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-lg bg-amber-500/15 text-xs font-semibold text-amber-700 hover:bg-amber-500/25 dark:text-amber-400">
+              <Upload className="h-3 w-3" /> Finish setup
+            </button>
           )}
-          <a
-            href={link.merchantUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium hover:bg-muted"
-            title="Open product page"
-          >
+          <a href={link.merchantUrl} target="_blank" rel="noreferrer" className="inline-flex h-8 items-center gap-1 rounded-lg border border-border px-2 text-xs font-medium hover:bg-muted" title="Open product page">
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
@@ -290,55 +251,60 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       </div>
       <h2 className="text-lg font-semibold">No links yet</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-        Paste your first affiliate link. We&apos;ll scrape the product page,
-        generate a branded image, write marketing copy for 4 platforms, and
-        create a cloaked /go/ URL that hides your real affiliate link from
-        social media.
+        Paste your first affiliate link. We&apos;ll scrape the product page, generate a branded image, write marketing copy for 4 platforms, and create a cloaked /go/ URL that hides your real affiliate link from social media.
       </p>
-      <button
-        onClick={onAdd}
-        className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90"
-      >
+      <button onClick={onAdd} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">
         <Plus className="h-4 w-4" /> Add your first link
       </button>
     </div>
   );
 }
 
-function AddLinkModal({
-  onClose,
-  onSuccess,
-}: {
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
+function AddLinkModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [platform, setPlatform] = useState<string>("impact");
   const [trackingUrl, setTrackingUrl] = useState("");
   const [merchantUrl, setMerchantUrl] = useState("");
-  const [stage, setStage] = useState<"form" | "scraping" | "generating" | "error">(
-    "form"
-  );
+  const [manualImage, setManualImage] = useState<string | null>(null);
+  const [stage, setStage] = useState<"form" | "processing" | "error">("form");
   const [error, setError] = useState<string | null>(null);
+  const [progressMsg, setProgressMsg] = useState("");
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { setError("Image must be under 8MB"); return; }
+    if (!file.type.startsWith("image/")) { setError("File must be an image"); return; }
+    const reader = new FileReader();
+    reader.onload = () => setManualImage(String(reader.result));
+    reader.readAsDataURL(file);
+  }
 
   async function submit() {
     if (!trackingUrl.trim() || !merchantUrl.trim()) {
       setError("Both URLs are required");
       return;
     }
-
-    setStage("scraping");
+    setStage("processing");
+    setProgressMsg("Reading product page…");
     setError(null);
 
-    const genTimer = setTimeout(() => setStage("generating"), 8000);
+    const timer1 = setTimeout(() => setProgressMsg("Generating branded image…"), 6000);
+    const timer2 = setTimeout(() => setProgressMsg("Writing marketing copy…"), 14000);
 
     try {
       const res = await fetch("/api/money-engine/tracking-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform, trackingUrl, merchantUrl }),
+        body: JSON.stringify({
+          platform,
+          trackingUrl,
+          merchantUrl,
+          manualImageBase64: manualImage,
+        }),
       });
       const data = await res.json();
-      clearTimeout(genTimer);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       if (!res.ok || !data.ok) {
         setStage("error");
         setError(data.error ?? "Failed to process link");
@@ -346,49 +312,29 @@ function AddLinkModal({
       }
       onSuccess();
     } catch (e: any) {
-      clearTimeout(genTimer);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
       setStage("error");
       setError(e.message);
     }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-      onClick={stage === "form" ? onClose : undefined}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"
-      >
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={stage === "form" ? onClose : undefined}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl">
         {stage === "form" && (
           <>
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-base font-semibold">Add affiliate link</h2>
-              <button
-                onClick={onClose}
-                className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Platform
-                </label>
+                <label className="text-xs font-medium text-muted-foreground">Platform</label>
                 <div className="mt-1 flex gap-2">
                   {PLATFORM_CONFIG.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => setPlatform(p.id)}
-                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                        platform === p.id
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border hover:bg-muted"
-                      }`}
-                    >
+                    <button key={p.id} onClick={() => setPlatform(p.id)} className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${platform === p.id ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"}`}>
                       {p.name}
                     </button>
                   ))}
@@ -396,68 +342,51 @@ function AddLinkModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Your affiliate link
-                </label>
-                <input
-                  value={trackingUrl}
-                  onChange={(e) => setTrackingUrl(e.target.value)}
-                  placeholder="https://jumia-ng.sjv.io/c/123456/789/12345"
-                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Never shown publicly — used only as the /go/ redirect target
-                </p>
+                <label className="text-xs font-medium text-muted-foreground">Your affiliate link</label>
+                <input value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} placeholder="https://jumia-ng.sjv.io/c/123456/789/12345" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Never shown publicly — used only as the /go/ redirect target</p>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
-                  Product page URL
-                </label>
-                <input
-                  value={merchantUrl}
-                  onChange={(e) => setMerchantUrl(e.target.value)}
-                  placeholder="https://jumia.com.ng/tecno-spark-20"
-                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
-                />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Where the product image and details come from
-                </p>
+                <label className="text-xs font-medium text-muted-foreground">Product page URL</label>
+                <input value={merchantUrl} onChange={(e) => setMerchantUrl(e.target.value)} placeholder="https://jumia.com.ng/tecno-spark-20" className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Where the product image and details come from</p>
               </div>
 
-              {error && (
-                <div className="rounded-lg bg-rose-500/10 p-2 text-xs text-rose-600 dark:text-rose-400">
-                  {error}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Product image (optional)</label>
+                <div className="mt-1 flex gap-2">
+                  <label className="inline-flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border text-xs font-medium hover:bg-muted">
+                    <Upload className="h-3.5 w-3.5" /> {manualImage ? "Change image" : "Upload if scraping fails"}
+                    <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
+                  </label>
+                  {manualImage && (
+                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600">
+                      <Check className="h-4 w-4" />
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              {manualImage && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={manualImage} alt="preview" className="h-32 w-full rounded-lg border border-border object-cover" />
               )}
 
-              <button
-                onClick={submit}
-                disabled={!trackingUrl.trim() || !merchantUrl.trim()}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
-              >
+              {error && <div className="rounded-lg bg-rose-500/10 p-2 text-xs text-rose-600 dark:text-rose-400">{error}</div>}
+
+              <button onClick={submit} disabled={!trackingUrl.trim() || !merchantUrl.trim()} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 <Sparkles className="h-4 w-4" /> Detect and generate
               </button>
             </div>
           </>
         )}
 
-        {(stage === "scraping" || stage === "generating") && (
+        {stage === "processing" && (
           <div className="py-6 text-center">
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-            <h3 className="mt-4 text-base font-semibold">
-              {stage === "scraping"
-                ? "Reading product page…"
-                : "Generating content…"}
-            </h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {stage === "scraping"
-                ? "Extracting title, image, price, and brand"
-                : "Creating branded image + marketing copy for 4 platforms"}
-            </p>
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              This takes 15–30 seconds
-            </p>
+            <h3 className="mt-4 text-base font-semibold">{progressMsg}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">This takes 15–30 seconds</p>
           </div>
         )}
 
@@ -466,15 +395,7 @@ function AddLinkModal({
             <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" />
             <h3 className="mt-3 text-base font-semibold">Something went wrong</h3>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
-            <button
-              onClick={() => {
-                setStage("form");
-                setError(null);
-              }}
-              className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-            >
-              Try again
-            </button>
+            <button onClick={() => { setStage("form"); setError(null); }} className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">Try again</button>
           </div>
         )}
       </div>
@@ -482,21 +403,175 @@ function AddLinkModal({
   );
 }
 
-function SnippetsModal({
-  link,
-  onClose,
-}: {
-  link: TrackingLink;
-  onClose: () => void;
-}) {
+function EditLinkModal({ link, onClose, onSuccess }: { link: TrackingLink; onClose: () => void; onSuccess: () => void }) {
+  const [label, setLabel] = useState(link.label);
+  const [productName, setProductName] = useState(link.productName);
+  const [trackingUrl, setTrackingUrl] = useState(link.trackingUrl);
+  const [merchantUrl, setMerchantUrl] = useState(link.merchantUrl);
+  const [price, setPrice] = useState(link.price ?? "");
+  const [originalPrice, setOriginalPrice] = useState(link.originalPrice ?? "");
+  const [category, setCategory] = useState(link.category ?? "");
+  const [description, setDescription] = useState(link.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/money-engine/tracking-links/${link.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label, productName, trackingUrl, merchantUrl,
+          price: price || null, originalPrice: originalPrice || null,
+          category, description,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      setSuccessMsg("Saved");
+      setTimeout(() => onSuccess(), 500);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function regenerate() {
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/money-engine/tracking-links/${link.id}/regenerate`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Regenerate failed");
+      setSuccessMsg("Regenerated");
+      setTimeout(() => onSuccess(), 500);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  async function uploadImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { setError("Image must be under 8MB"); return; }
+    setUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`/api/money-engine/tracking-links/${link.id}/upload-image`, {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      setSuccessMsg("Image uploaded + marketing card regenerated");
+      setTimeout(() => onSuccess(), 800);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const busy = saving || regenerating || uploading;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={busy ? undefined : onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-semibold">Edit link</h2>
+          <button onClick={onClose} disabled={busy} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted disabled:opacity-50"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Label</label>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Product name</label>
+            <input value={productName} onChange={(e) => setProductName(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Affiliate tracking URL</label>
+            <input value={trackingUrl} onChange={(e) => setTrackingUrl(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Product page URL</label>
+            <input value={merchantUrl} onChange={(e) => setMerchantUrl(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+            <p className="mt-1 text-[11px] text-muted-foreground">Changing this clears scraped data — click Regenerate after saving</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Price</label>
+              <input value={price} onChange={(e) => setPrice(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">Original price</label>
+              <input value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Category</label>
+            <input value={category} onChange={(e) => setCategory(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="mt-1 w-full resize-none rounded-lg border border-border bg-background p-2 text-sm" />
+          </div>
+
+          <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+            <div className="text-xs font-semibold">Product image</div>
+            <div className="mt-2 flex gap-2">
+              <label className={`inline-flex h-9 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border text-xs font-medium hover:bg-muted ${uploading ? "opacity-50" : ""}`}>
+                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploading ? "Uploading…" : link.hasImage ? "Replace image" : "Upload image"}
+                <input type="file" accept="image/*" onChange={uploadImage} disabled={uploading} className="hidden" />
+              </label>
+              <button onClick={regenerate} disabled={regenerating || !link.shortUrl} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted disabled:opacity-50">
+                {regenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                {regenerating ? "Re-scraping…" : "Re-scrape"}
+              </button>
+            </div>
+          </div>
+
+          {error && <div className="rounded-lg bg-rose-500/10 p-2 text-xs text-rose-600 dark:text-rose-400">{error}</div>}
+          {successMsg && <div className="rounded-lg bg-emerald-500/10 p-2 text-xs text-emerald-600 dark:text-emerald-400">{successMsg}</div>}
+
+          <div className="flex gap-2 pt-2">
+            <button onClick={onClose} disabled={busy} className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-muted disabled:opacity-50">Cancel</button>
+            <button onClick={save} disabled={busy} className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+              {saving ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Save changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SnippetsModal({ link, onClose }: { link: TrackingLink; onClose: () => void }) {
   const [posting, setPosting] = useState<string | null>(null);
   const [postResult, setPostResult] = useState<any>(null);
 
   let snippets: any = null;
   if (link.generatedSnippets) {
-    try {
-      snippets = JSON.parse(link.generatedSnippets);
-    } catch {}
+    try { snippets = JSON.parse(link.generatedSnippets); } catch {}
   }
 
   async function post(platformKey: string, caption: string) {
@@ -511,7 +586,7 @@ function SnippetsModal({
           caption,
           platforms: ["telegram", "bluesky", "mastodon"],
           useGeneratedImage: false,
-          customImageBase64: link.generatedImage,
+          customImageUrl: `/api/money-engine/tracking-links/${link.id}/image`,
         }),
       });
       const data = await res.json();
@@ -525,19 +600,11 @@ function SnippetsModal({
 
   if (!snippets) {
     return (
-      <div
-        className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-        onClick={onClose}
-      >
+      <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
         <div className="w-full max-w-md rounded-2xl bg-card p-6 text-center">
           <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
-          <p className="mt-3 text-sm">No snippets generated yet.</p>
-          <button
-            onClick={onClose}
-            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
-          >
-            Close
-          </button>
+          <p className="mt-3 text-sm">No snippets generated yet. Edit the link and click Re-scrape.</p>
+          <button onClick={onClose} className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground">Close</button>
         </div>
       </div>
     );
@@ -545,78 +612,34 @@ function SnippetsModal({
 
   const modules = [
     { key: "tiktok", label: "TikTok", text: snippets.tiktok?.caption ?? "" },
-    {
-      key: "facebook",
-      label: "Facebook",
-      text: snippets.facebook?.caption ?? "",
-    },
-    {
-      key: "x",
-      label: "X (Twitter)",
-      text: (snippets.x?.tweets ?? []).join("\n\n"),
-    },
-    {
-      key: "youtube",
-      label: "YouTube",
-      text: `${snippets.youtube?.title ?? ""}\n\n${
-        snippets.youtube?.description ?? ""
-      }`,
-    },
+    { key: "facebook", label: "Facebook", text: snippets.facebook?.caption ?? "" },
+    { key: "x", label: "X (Twitter)", text: (snippets.x?.tweets ?? []).join("\n\n") },
+    { key: "youtube", label: "YouTube", text: `${snippets.youtube?.title ?? ""}\n\n${snippets.youtube?.description ?? ""}` },
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5"
-      >
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="text-base font-semibold">Marketing content</div>
-            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-              {link.productName}
-            </div>
+            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{link.productName}</div>
           </div>
-          <button
-            onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
 
-        {link.generatedImage && (
+        {link.hasImage && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={link.generatedImage}
-            alt=""
-            className="mb-4 w-full rounded-lg border border-border/60"
-          />
+          <img src={`/api/money-engine/tracking-links/${link.id}/image`} alt="" className="mb-4 w-full rounded-lg border border-border/60" />
         )}
 
         <div className="space-y-3">
           {modules.map((m) => (
-            <div
-              key={m.key}
-              className="rounded-lg border border-border/60 p-3"
-            >
+            <div key={m.key} className="rounded-lg border border-border/60 p-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase text-primary">
-                  {m.label}
-                </span>
-                <button
-                  onClick={() => post(m.key, m.text)}
-                  disabled={posting === m.key}
-                  className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
-                >
-                  {posting === m.key ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Share2 className="h-3 w-3" />
-                  )}
+                <span className="text-xs font-bold uppercase text-primary">{m.label}</span>
+                <button onClick={() => post(m.key, m.text)} disabled={posting === m.key} className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50">
+                  {posting === m.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Share2 className="h-3 w-3" />}
                   Post
                 </button>
               </div>
@@ -634,13 +657,7 @@ function SnippetsModal({
                 {(postResult.results ?? []).map((r: any, i: number) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className="font-medium capitalize">{r.platform}:</span>
-                    {r.result?.ok ? (
-                      <span className="text-emerald-600">✓ posted</span>
-                    ) : (
-                      <span className="text-rose-600">
-                        ✗ {r.result?.error}
-                      </span>
-                    )}
+                    {r.result?.ok ? <span className="text-emerald-600">✓ posted</span> : <span className="text-rose-600">✗ {r.result?.error}</span>}
                   </div>
                 ))}
               </div>
@@ -659,18 +676,11 @@ function UpgradeGate() {
         <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary/20 text-primary">
           <Lock className="h-8 w-8" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Auto Money Engine — Premium
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Auto Money Engine — Premium</h1>
         <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
-          Add your Impact and WarriorPlus affiliate links. We generate branded
-          images, marketing copy for 4 platforms, and cloaked /go/ redirects that
-          protect you from social media bans.
+          Add your Impact and WarriorPlus affiliate links. We generate branded images, marketing copy for 4 platforms, and cloaked /go/ redirects that protect you from social media bans.
         </p>
-        <Link
-          href="/billing"
-          className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90"
-        >
+        <Link href="/billing" className="mt-8 inline-flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:opacity-90">
           <Crown className="h-4 w-4" /> Upgrade — $35/mo
         </Link>
       </div>

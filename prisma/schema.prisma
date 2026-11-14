@@ -581,21 +581,22 @@ model SocialPost {
 // ═══════════════════════════════════════════════════════════
 
 model UserTrackingLink {
-  id              String   @id @default(cuid())
-  userId          String
-  platform        String // "impact" | "warriorplus"
-  label           String
-  productName     String
-  productImageUrl String?  @db.Text
-  merchantUrl     String   @db.Text
-  trackingUrl     String   @db.Text
-  price           Decimal? @db.Decimal(10, 2)
-  originalPrice   Decimal? @db.Decimal(10, 2)
-  currency        String   @default("USD")
-  category        String?
-  description     String?  @db.Text
-  offerId         String?
-  isActive        Boolean  @default(true)
+  id                String   @id @default(cuid())
+  userId            String
+  platform          String // "impact" | "warriorplus"
+  label             String
+  productName       String
+  productImageUrl   String?  @db.Text
+  manualImageBase64 String?  @db.Text
+  merchantUrl       String   @db.Text
+  trackingUrl       String   @db.Text
+  price             Decimal? @db.Decimal(10, 2)
+  originalPrice     Decimal? @db.Decimal(10, 2)
+  currency          String   @default("USD")
+  category          String?
+  description       String?  @db.Text
+  offerId           String?
+  isActive          Boolean  @default(true)
 
   // Cloaked redirect (real affiliate URL never exposed)
   slug     String? @unique
