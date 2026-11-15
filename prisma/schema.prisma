@@ -54,7 +54,7 @@ model User {
   moneyEngineLinkClicks MoneyEngineLinkClick[]
   linkToVideoJobs       LinkToVideoJob[]
 
-  // Sales Copy (Lemmy + Answer)
+  // Sales Copy (Lemmy + Answer long-form)
   salesCopy MoneyEngineSalesCopy[]
   usedHooks MoneyEngineUsedHook[]
 
@@ -66,10 +66,16 @@ model User {
   socialPosts       SocialPost[]
 
   // User tracking links (paste-affiliate-link method)
-  trackingLinks UserTrackingLink[]
+  trackingLinks      UserTrackingLink[]
+  trackingLinkClicks UserTrackingLinkClick[]
 
-  // Q&A Content Engine history
+  // Q&A Content Engine
   qaHistory AutoMoneyQAHistory[]
+
+  // Auto-post accounts + log
+  lemmyAccount      UserLemmyAccount?
+  answerAccount     UserAnswerAccount?
+  autoMoneyPostLogs AutoMoneyPostLog[]
 }
 
 model Account {
@@ -253,7 +259,7 @@ model PasswordResetToken {
 // AUTO MONEY ENGINE
 // ═══════════════════════════════════════════════════════════
 
-// LEGACY — kept for backwards compatibility but no longer used by the app.
+// LEGACY — kept for backwards compatibility
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
@@ -386,7 +392,7 @@ model MoneyEngineSale {
 }
 
 // ═══════════════════════════════════════════════════════════
-// LINK CLOAKER
+// LINK CLOAKER (legacy)
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineLink {
@@ -465,7 +471,7 @@ model LinkToVideoJob {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SALES COPY (Lemmy + Answer long-form)
+// SALES COPY (long-form for Lemmy/Answer catalog offers)
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineSalesCopy {
@@ -580,13 +586,13 @@ model SocialPost {
 }
 
 // ═══════════════════════════════════════════════════════════
-// USER TRACKING LINKS — paste-affiliate-link method
+// USER TRACKING LINKS (paste-affiliate-link method)
 // ═══════════════════════════════════════════════════════════
 
 model UserTrackingLink {
   id              String   @id @default(cuid())
   userId          String
-  platform        String // "impact" | "warriorplus"
+  platform        String
   label           String
   productName     String
   productImageUrl String?  @db.Text
@@ -600,7 +606,7 @@ model UserTrackingLink {
   offerId         String?
   isActive        Boolean  @default(true)
 
-  // Cloaked redirect (real affiliate URL never exposed)
+  // Cloaked redirect
   slug     String? @unique
   shortUrl String? @db.Text
 
@@ -610,16 +616,20 @@ model UserTrackingLink {
   scrapedPrice       String?
   scrapedDescription String? @db.Text
   scrapedBrand       String?
-  scrapeStatus       String  @default("pending") // pending | success | failed
+  scrapeStatus       String  @default("pending")
   scrapeError        String? @db.Text
 
-  // Manual image override (user upload)
+  // Manual image override
   manualImageBase64 String? @db.Text
 
   // Auto-generated marketing content
-  generatedImage    String?   @db.Text // data:image/jpeg;base64,...
-  generatedSnippets String?   @db.Text // JSON { tiktok, facebook, x, youtube }
+  generatedImage    String?   @db.Text
+  generatedSnippets String?   @db.Text
   generatedAt       DateTime?
+
+  // Click tracking
+  clicks    Int                     @default(0)
+  clicksRel UserTrackingLinkClick[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -632,8 +642,26 @@ model UserTrackingLink {
   @@map("user_tracking_links")
 }
 
+model UserTrackingLinkClick {
+  id        String   @id @default(cuid())
+  linkId    String
+  userId    String
+  ipAddress String?
+  userAgent String?  @db.Text
+  referrer  String?  @db.Text
+  country   String?
+  clickedAt DateTime @default(now())
+
+  link UserTrackingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([linkId])
+  @@index([userId, clickedAt])
+  @@map("user_tracking_link_clicks")
+}
+
 // ═══════════════════════════════════════════════════════════
-// Q&A CONTENT ENGINE — generated content history
+// Q&A CONTENT ENGINE
 // ═══════════════════════════════════════════════════════════
 
 model AutoMoneyQAHistory {
@@ -643,12 +671,12 @@ model AutoMoneyQAHistory {
   productName      String?
   productId        String?
   question         String   @db.Text
-  platform         String // 'qa' | 'tiktok' | 'threads' | 'pinterest' | 'youtube' | 'instagram' | 'lemmy' | 'answer'
+  platform         String
   videoUrl         String?  @db.Text
   tag              String?
-  generatedContent String   @db.Text // JSON of the generated content
-  usedContent      String?  @db.Text // exact text user copied/posted
-  status           String   @default("generated") // 'generated' | 'copied' | 'posted'
+  generatedContent String   @db.Text
+  usedContent      String?  @db.Text
+  status           String   @default("generated")
   createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -657,4 +685,71 @@ model AutoMoneyQAHistory {
   @@index([userId, platform])
   @@index([userId, videoUrl])
   @@map("auto_money_qa_history")
+}
+
+// ═══════════════════════════════════════════════════════════
+// LEMMY AUTO-POST ACCOUNT
+// ═══════════════════════════════════════════════════════════
+
+model UserLemmyAccount {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  instanceUrl       String    @db.Text
+  username          String
+  passwordEncrypted String    @db.Text
+  jwtEncrypted      String?   @db.Text
+  jwtExpiresAt      DateTime?
+  defaultCommunity  String?
+  isActive          Boolean   @default(true)
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_lemmy_accounts")
+}
+
+// ═══════════════════════════════════════════════════════════
+// APACHE ANSWER AUTO-POST ACCOUNT
+// ═══════════════════════════════════════════════════════════
+
+model UserAnswerAccount {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  instanceUrl       String    @db.Text
+  apiTokenEncrypted String    @db.Text
+  isActive          Boolean   @default(true)
+  lastVerifiedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_answer_accounts")
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTO MONEY POST LOG — every published Lemmy/Answer post
+// ═══════════════════════════════════════════════════════════
+
+model AutoMoneyPostLog {
+  id             String   @id @default(cuid())
+  userId         String
+  trackingLinkId String?
+  platform       String
+  title          String   @db.Text
+  body           String   @db.Text
+  url            String?  @db.Text
+  externalId     String?
+  community      String?
+  status         String   @default("posted")
+  error          String?  @db.Text
+  postedAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, platform])
+  @@index([userId, postedAt])
+  @@map("auto_money_post_logs")
 }
