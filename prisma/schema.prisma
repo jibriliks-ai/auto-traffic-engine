@@ -54,19 +54,22 @@ model User {
   moneyEngineLinkClicks MoneyEngineLinkClick[]
   linkToVideoJobs       LinkToVideoJob[]
 
-  // Sales Copy
+  // Sales Copy (Lemmy + Answer)
   salesCopy MoneyEngineSalesCopy[]
   usedHooks MoneyEngineUsedHook[]
 
-  // IndexNow
+  // IndexNow submissions
   indexNowSubmissions IndexNowSubmission[]
 
   // Social Poster
   socialConnections SocialConnection[]
   socialPosts       SocialPost[]
 
-  // User tracking links (paste-your-affiliate-link method)
+  // User tracking links (paste-affiliate-link method)
   trackingLinks UserTrackingLink[]
+
+  // Q&A Content Engine history
+  qaHistory AutoMoneyQAHistory[]
 }
 
 model Account {
@@ -250,7 +253,7 @@ model PasswordResetToken {
 // AUTO MONEY ENGINE
 // ═══════════════════════════════════════════════════════════
 
-// LEGACY — kept for backwards compatibility but not used by the app.
+// LEGACY — kept for backwards compatibility but no longer used by the app.
 model UserAffiliateAccount {
   id                    String    @id @default(cuid())
   userId                String
@@ -462,7 +465,7 @@ model LinkToVideoJob {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SALES COPY
+// SALES COPY (Lemmy + Answer long-form)
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineSalesCopy {
@@ -581,22 +584,21 @@ model SocialPost {
 // ═══════════════════════════════════════════════════════════
 
 model UserTrackingLink {
-  id                String   @id @default(cuid())
-  userId            String
-  platform          String // "impact" | "warriorplus"
-  label             String
-  productName       String
-  productImageUrl   String?  @db.Text
-  manualImageBase64 String?  @db.Text
-  merchantUrl       String   @db.Text
-  trackingUrl       String   @db.Text
-  price             Decimal? @db.Decimal(10, 2)
-  originalPrice     Decimal? @db.Decimal(10, 2)
-  currency          String   @default("USD")
-  category          String?
-  description       String?  @db.Text
-  offerId           String?
-  isActive          Boolean  @default(true)
+  id              String   @id @default(cuid())
+  userId          String
+  platform        String // "impact" | "warriorplus"
+  label           String
+  productName     String
+  productImageUrl String?  @db.Text
+  merchantUrl     String   @db.Text
+  trackingUrl     String   @db.Text
+  price           Decimal? @db.Decimal(10, 2)
+  originalPrice   Decimal? @db.Decimal(10, 2)
+  currency        String   @default("USD")
+  category        String?
+  description     String?  @db.Text
+  offerId         String?
+  isActive        Boolean  @default(true)
 
   // Cloaked redirect (real affiliate URL never exposed)
   slug     String? @unique
@@ -611,9 +613,12 @@ model UserTrackingLink {
   scrapeStatus       String  @default("pending") // pending | success | failed
   scrapeError        String? @db.Text
 
+  // Manual image override (user upload)
+  manualImageBase64 String? @db.Text
+
   // Auto-generated marketing content
-  generatedImage    String?   @db.Text
-  generatedSnippets String?   @db.Text
+  generatedImage    String?   @db.Text // data:image/jpeg;base64,...
+  generatedSnippets String?   @db.Text // JSON { tiktok, facebook, x, youtube }
   generatedAt       DateTime?
 
   createdAt DateTime @default(now())
@@ -625,4 +630,31 @@ model UserTrackingLink {
   @@index([userId, isActive])
   @@index([slug])
   @@map("user_tracking_links")
+}
+
+// ═══════════════════════════════════════════════════════════
+// Q&A CONTENT ENGINE — generated content history
+// ═══════════════════════════════════════════════════════════
+
+model AutoMoneyQAHistory {
+  id               String   @id @default(cuid())
+  userId           String
+  niche            String
+  productName      String?
+  productId        String?
+  question         String   @db.Text
+  platform         String // 'qa' | 'tiktok' | 'threads' | 'pinterest' | 'youtube' | 'instagram' | 'lemmy' | 'answer'
+  videoUrl         String?  @db.Text
+  tag              String?
+  generatedContent String   @db.Text // JSON of the generated content
+  usedContent      String?  @db.Text // exact text user copied/posted
+  status           String   @default("generated") // 'generated' | 'copied' | 'posted'
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, platform])
+  @@index([userId, videoUrl])
+  @@map("auto_money_qa_history")
 }
