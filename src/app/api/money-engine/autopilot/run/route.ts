@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import path from "path";
-import fs from "fs/promises";
-import os from "os";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/money-engine/crypto";
@@ -15,24 +12,13 @@ import {
   lemmyFindCommunity,
   lemmyCreatePost,
 } from "@/lib/money-engine/lemmy/client";
-// Import signLinkId helper from the public image route
-import crypto from "crypto";
+import { signLinkId } from "@/lib/money-engine/publicImage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const APP_DOMAIN =
   process.env.NEXTAUTH_URL ?? "https://growthbot-aprv.onrender.com";
-const SECRET = process.env.NEXTAUTH_SECRET ?? "";
-
-function signLinkId(linkId: string): string {
-  const payload = Buffer.from(linkId, "utf-8").toString("base64url");
-  const sig = crypto
-    .createHmac("sha256", SECRET)
-    .update(linkId)
-    .digest("base64url");
-  return `${payload}.${sig}`;
-}
 
 function slugify(title: string): string {
   return (
@@ -52,27 +38,35 @@ async function ensureContent(link: any): Promise<any> {
       if (parsed.lemmy && parsed.pinterest && parsed.threads) return parsed;
     } catch {}
   }
+
   // Otherwise generate fresh
   const snippets = await generateSnippets({
     productName: link.scrapedTitle || link.productName || link.label,
     brand: link.scrapedBrand,
-    price: link.scrapedPrice || (link.price ? `$${Number(link.price).toFixed(2)}` : null),
-    originalPrice: link.originalPrice ? `$${Number(link.originalPrice).toFixed(2)}` : null,
+    price:
+      link.scrapedPrice ||
+      (link.price ? `$${Number(link.price).toFixed(2)}` : null),
+    originalPrice: link.originalPrice
+      ? `$${Number(link.originalPrice).toFixed(2)}`
+      : null,
     description: link.scrapedDescription || link.description,
     category: link.category,
     merchantUrl: link.merchantUrl,
     cloakedUrl: link.shortUrl,
   });
+
   // Persist so we don't regenerate next cycle
   await prisma.userTrackingLink.update({
     where: { id: link.id },
     data: { generatedSnippets: JSON.stringify(snippets) },
   });
+
   return snippets;
 }
 
 async function ensureImage(link: any): Promise<string | null> {
   if (link.generatedImage) return link.generatedImage;
+
   const productImage =
     link.manualImageBase64 || link.scrapedImage || link.productImageUrl;
   if (!productImage) return null;
@@ -96,10 +90,12 @@ async function ensureImage(link: any): Promise<string | null> {
       badge: discount ? `${discount}% OFF` : "NEW",
       urgencyLine: "Tap the link in bio to grab yours",
     });
+
     await prisma.userTrackingLink.update({
       where: { id: link.id },
       data: { generatedImage: dataUrl, generatedAt: new Date() },
     });
+
     return dataUrl;
   } catch (e: any) {
     console.warn(`[autopilot] Image gen failed: ${e?.message}`);
@@ -107,7 +103,10 @@ async function ensureImage(link: any): Promise<string | null> {
   }
 }
 
-function computeDiscount(price: string | null, original: string | null): number | null {
+function computeDiscount(
+  price: string | null,
+  original: string | null
+): number | null {
   if (!price || !original) return null;
   const p = Number(String(price).replace(/[^0-9.]/g, ""));
   const o = Number(String(original).replace(/[^0-9.]/g, ""));
@@ -126,7 +125,9 @@ interface PlatformResult {
 async function runAutopilotForUser(
   userId: string
 ): Promise<{ skipped?: string; results: PlatformResult[] }> {
-  const settings = await prisma.autoPilotSettings.findUnique({ where: { userId } });
+  const settings = await prisma.autoPilotSettings.findUnique({
+    where: { userId },
+  });
   if (!settings || !settings.isEnabled) {
     return { skipped: "disabled", results: [] };
   }
@@ -173,20 +174,26 @@ async function runAutopilotForUser(
 
       if (lemmyAccount?.isActive) {
         const community =
-          settings.lemmyCommunity ||
-          lemmyAccount.defaultCommunity ||
-          "test";
+          settings.lemmyCommunity || lemmyAccount.defaultCommunity || "test";
 
         let jwt: string;
         try {
-          if (lemmyAccount.jwtEncrypted && lemmyAccount.jwtExpiresAt && lemmyAccount.jwtExpiresAt > new Date()) {
+          if (
+            lemmyAccount.jwtEncrypted &&
+            lemmyAccount.jwtExpiresAt &&
+            lemmyAccount.jwtExpiresAt > new Date()
+          ) {
             jwt = decryptSecret(lemmyAccount.jwtEncrypted);
           } else {
             throw new Error("jwt expired");
           }
         } catch {
           const password = decryptSecret(lemmyAccount.passwordEncrypted);
-          const login = await lemmyLogin(lemmyAccount.instanceUrl, lemmyAccount.username, password);
+          const login = await lemmyLogin(
+            lemmyAccount.instanceUrl,
+            lemmyAccount.username,
+            password
+          );
           jwt = login.jwt;
           const { encryptSecret } = await import("@/lib/money-engine/crypto");
           await prisma.userLemmyAccount.update({
@@ -208,7 +215,7 @@ async function runAutopilotForUser(
           title: lemmyTitle,
           body: lemmyBody,
           communityId,
-          url: link.shortUrl,
+          url: link.shortUrl ?? undefined,
         });
         results.push({
           platform: "lemmy",
@@ -363,9 +370,7 @@ async function runAutopilotForUser(
           url: r.url,
           externalId: r.id,
           community:
-            r.platform === "lemmy"
-              ? settings.lemmyCommunity || null
-              : null,
+            r.platform === "lemmy" ? settings.lemmyCommunity || null : null,
           status: r.ok ? "posted" : "failed",
           error: r.error,
         },
@@ -378,11 +383,14 @@ async function runAutopilotForUser(
     where: { userId },
     data: {
       lastRunAt: new Date(),
-      lastRunStatus: anyOk ? (results.every((r) => r.ok) ? "success" : "partial") : "failed",
-      lastRunError:
-        anyOk
-          ? null
-          : results.find((r) => r.error)?.error ?? "all platforms failed",
+      lastRunStatus: anyOk
+        ? results.every((r) => r.ok)
+          ? "success"
+          : "partial"
+        : "failed",
+      lastRunError: anyOk
+        ? null
+        : results.find((r) => r.error)?.error ?? "all platforms failed",
       totalPostsMade: { increment: results.filter((r) => r.ok).length },
     },
   });
@@ -393,7 +401,9 @@ async function runAutopilotForUser(
 export async function POST() {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id as string | undefined;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const out = await runAutopilotForUser(userId);

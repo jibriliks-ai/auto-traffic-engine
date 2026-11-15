@@ -1,55 +1,18 @@
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { verifyLinkToken } from "@/lib/money-engine/publicImage";
 
 export const runtime = "nodejs";
 
-const SECRET = process.env.NEXTAUTH_SECRET ?? "";
-
-/** Sign a link ID → token that can be served publicly */
-export function signLinkId(linkId: string): string {
-  const payload = Buffer.from(linkId, "utf-8").toString("base64url");
-  const sig = crypto
-    .createHmac("sha256", SECRET)
-    .update(linkId)
-    .digest("base64url");
-  return `${payload}.${sig}`;
-}
-
-function verifyToken(token: string): string | null {
-  const [payload, sig] = token.split(".");
-  if (!payload || !sig) return null;
-  let linkId: string;
-  try {
-    linkId = Buffer.from(payload, "base64url").toString("utf-8");
-  } catch {
-    return null;
-  }
-  const expected = crypto
-    .createHmac("sha256", SECRET)
-    .update(linkId)
-    .digest("base64url");
-  try {
-    if (sig.length !== expected.length) return null;
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-      return null;
-    }
-  } catch {
-    return null;
-  }
-  return linkId;
-}
-
 /**
  * Public image endpoint — used by Threads + Pinterest.
- * URL is signed (HMAC-SHA256) so the image can be fetched by external
- * platforms without a session cookie.
+ * URL is signed (HMAC-SHA256) so external platforms can fetch without auth.
  */
 export async function GET(
   _: Request,
   { params }: { params: { token: string } }
 ) {
-  const linkId = verifyToken(params.token);
+  const linkId = verifyLinkToken(params.token);
   if (!linkId) {
     return NextResponse.json({ error: "Invalid token" }, { status: 403 });
   }
