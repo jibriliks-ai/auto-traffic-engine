@@ -6,7 +6,8 @@ import { useSession } from "next-auth/react";
 import {
   Plus, Loader2, AlertTriangle, X, Crown, Lock, Share2, Copy, Check,
   Trash2, ExternalLink, Link2, Sparkles, Package, Pencil, Upload,
-  RefreshCw, Image as ImageIcon, MessageSquare, ArrowRight,
+  RefreshCw, Image as ImageIcon, MessageSquare, ArrowRight, Video,
+  Download, Play,
 } from "lucide-react";
 import { PLATFORM_CONFIG } from "@/lib/money-engine/platforms";
 
@@ -45,7 +46,9 @@ export default function MoneyEnginePage() {
   const [editing, setEditing] = useState<TrackingLink | null>(null);
   const [snippetsFor, setSnippetsFor] = useState<TrackingLink | null>(null);
   const [salesCopyFor, setSalesCopyFor] = useState<TrackingLink | null>(null);
+  const [videoFor, setVideoFor] = useState<TrackingLink | null>(null);
   const [regeneratingImage, setRegeneratingImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const plan = (session?.user as any)?.plan ?? "free";
   const isAdmin = (session?.user as any)?.isAdmin === true;
@@ -79,15 +82,17 @@ export default function MoneyEnginePage() {
 
   async function regenerateImage(link: TrackingLink) {
     setRegeneratingImage(link.id);
+    setImageError(null);
     try {
       const res = await fetch(`/api/money-engine/tracking-links/${link.id}/regenerate-image`, {
         method: "POST",
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       await load();
     } catch (e: any) {
-      alert(`Image regeneration failed: ${e.message}`);
+      setImageError(e.message);
+      alert(`Regenerate image failed:\n\n${e.message}`);
     } finally {
       setRegeneratingImage(null);
     }
@@ -108,7 +113,7 @@ export default function MoneyEnginePage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Auto Money Engine</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add affiliate links, generate branded content, post across platforms.
+            Add affiliate links, generate branded images, videos, and content for every platform.
           </p>
         </div>
         {activeTab === "links" && (
@@ -121,7 +126,6 @@ export default function MoneyEnginePage() {
         )}
       </div>
 
-      {/* Tab switcher */}
       <div className="flex gap-1 rounded-lg border border-border/60 bg-card p-1">
         <button
           onClick={() => setActiveTab("links")}
@@ -172,6 +176,7 @@ export default function MoneyEnginePage() {
                   onShowSnippets={() => setSnippetsFor(l)}
                   onSalesCopy={() => setSalesCopyFor(l)}
                   onRegenerateImage={() => regenerateImage(l)}
+                  onMakeVideo={() => setVideoFor(l)}
                 />
               ))}
             </div>
@@ -209,6 +214,10 @@ export default function MoneyEnginePage() {
       {salesCopyFor && (
         <SalesCopyModal link={salesCopyFor} onClose={() => setSalesCopyFor(null)} />
       )}
+
+      {videoFor && (
+        <VideoModal link={videoFor} onClose={() => setVideoFor(null)} />
+      )}
     </div>
   );
 }
@@ -223,10 +232,6 @@ function QATabPlaceholder() {
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
         Generate honest, niche-safe engagement content for 5 platforms — Q&A answers,
         Threads posts, Pinterest pins, YouTube Shorts scripts, and Instagram Reels captions.
-      </p>
-      <p className="mx-auto mt-4 max-w-md text-xs text-muted-foreground">
-        Every output is filtered through niche safety rules and banned-word scrubbing.
-        Reuses your saved affiliate links.
       </p>
       <Link
         href="/money-engine/qa"
@@ -247,6 +252,7 @@ function LinkCard({
   onShowSnippets,
   onSalesCopy,
   onRegenerateImage,
+  onMakeVideo,
 }: {
   link: TrackingLink;
   regeneratingImage: boolean;
@@ -255,10 +261,15 @@ function LinkCard({
   onShowSnippets: () => void;
   onSalesCopy: () => void;
   onRegenerateImage: () => void;
+  onMakeVideo: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
-  const isReady = link.scrapeStatus === "success" && link.shortUrl && link.hasImage;
+
+  // Any image source makes the Image / Video buttons usable
+  const hasAnyImage = link.hasImage || Boolean(link.productImageUrl);
+  const canPost = link.scrapeStatus === "success" && !!link.shortUrl;
+  const canSalesCopy = Boolean(link.shortUrl) || Boolean(link.productName);
 
   function copyUrl() {
     if (!link.shortUrl) return;
@@ -329,36 +340,48 @@ function LinkCard({
             <button
               onClick={copyUrl}
               className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-background hover:text-foreground"
-              title="Copy"
+              title="Copy cloaked URL"
             >
               {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
             </button>
           </div>
         )}
 
-        {/* Primary actions */}
+        {/* Row 1: Post / Video / Sales */}
         <div className="mt-3 grid grid-cols-3 gap-1.5">
           <button
             onClick={onShowSnippets}
-            disabled={!isReady}
+            disabled={!canPost}
             className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-primary text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
             title="Generate and post social media captions"
           >
             <Sparkles className="h-3 w-3" /> Post
           </button>
           <button
+            onClick={onMakeVideo}
+            disabled={!hasAnyImage}
+            className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-violet-500/15 text-xs font-semibold text-violet-600 hover:bg-violet-500/25 disabled:opacity-50 dark:text-violet-400"
+            title="Create a 20-second video ad"
+          >
+            <Video className="h-3 w-3" /> Video
+          </button>
+          <button
             onClick={onSalesCopy}
-            disabled={!link.shortUrl}
+            disabled={!canSalesCopy}
             className="inline-flex h-8 items-center justify-center gap-1 rounded-lg bg-emerald-500/10 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 disabled:opacity-50 dark:text-emerald-400"
             title="Generate Lemmy + Answer sales copy"
           >
             <MessageSquare className="h-3 w-3" /> Sales
           </button>
+        </div>
+
+        {/* Row 2: Image / Product / Upload */}
+        <div className="mt-1.5 grid grid-cols-3 gap-1.5">
           <button
             onClick={onRegenerateImage}
-            disabled={regeneratingImage || !link.hasImage}
-            className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-border text-xs font-medium hover:bg-muted disabled:opacity-50"
-            title="Regenerate marketing image"
+            disabled={regeneratingImage || !hasAnyImage}
+            className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+            title="Regenerate branded marketing image"
           >
             {regeneratingImage ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -367,23 +390,21 @@ function LinkCard({
             )}
             Image
           </button>
-        </div>
-
-        <div className="mt-1.5 flex gap-1.5">
           <a
             href={link.merchantUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-7 flex-1 items-center justify-center gap-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted"
+            className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted"
+            title="Open product page"
           >
-            <ExternalLink className="h-3 w-3" /> Product page
+            <ExternalLink className="h-3 w-3" /> Product
           </a>
           <button
             onClick={onEdit}
-            className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-border px-2 text-[11px] font-medium hover:bg-muted"
+            className="inline-flex h-7 items-center justify-center gap-1 rounded-md border border-border text-[11px] font-medium hover:bg-muted"
             title="Upload image or re-scrape"
           >
-            <Upload className="h-3 w-3" />
+            <Upload className="h-3 w-3" /> Setup
           </button>
         </div>
 
@@ -419,6 +440,185 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   );
 }
 
+// ─── Video Modal ───
+
+function VideoModal({ link, onClose }: { link: TrackingLink; onClose: () => void }) {
+  const [status, setStatus] = useState<"idle" | "rendering" | "done" | "error">("idle");
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  async function generate() {
+    setStatus("rendering");
+    setError(null);
+    setProgress(0);
+
+    try {
+      const res = await fetch(`/api/money-engine/tracking-links/${link.id}/generate-video`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      setVideoId(data.id);
+
+      const started = Date.now();
+      const interval = setInterval(async () => {
+        try {
+          setProgress((p) => Math.min(95, p + 3));
+          const poll = await fetch(`/api/video/status/${data.id}`);
+          const info = await poll.json();
+          if (info.status === "done") {
+            clearInterval(interval);
+            setStatus("done");
+            setVideoUrl(info.url);
+            setProgress(100);
+          } else if (info.status === "failed") {
+            clearInterval(interval);
+            setStatus("error");
+            setError(info.error ?? "Render failed");
+          } else if (Date.now() - started > 120_000) {
+            clearInterval(interval);
+            setStatus("error");
+            setError("Render timed out after 2 minutes. Try again.");
+          }
+        } catch {
+          /* keep polling */
+        }
+      }, 2000);
+    } catch (e: any) {
+      setStatus("error");
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-base font-semibold">20-second video ad</div>
+            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+              {link.productName}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={status === "rendering"}
+            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {status === "idle" && (
+          <>
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="flex items-center gap-3">
+                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-violet-600 dark:text-violet-400">
+                  <Video className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold">Vertical MP4 · 20s · 720p</div>
+                  <div className="text-xs text-muted-foreground">
+                    Product image + price + CTA + QR code with your cloaked URL
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              First render on free tier can take 30–60 seconds. You&apos;ll be able to download the MP4 when it&apos;s ready.
+            </p>
+            <button
+              onClick={generate}
+              className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-violet-600 text-sm font-semibold text-white hover:bg-violet-700"
+            >
+              <Video className="h-4 w-4" /> Generate 20s Video
+            </button>
+          </>
+        )}
+
+        {status === "rendering" && (
+          <div className="py-6 text-center">
+            <Loader2 className="mx-auto h-8 w-8 animate-spin text-violet-600" />
+            <h3 className="mt-4 text-base font-semibold">Rendering video…</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{progress}% complete</p>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-violet-600 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Usually 15–30s on warm servers, 45–75s cold
+            </p>
+          </div>
+        )}
+
+        {status === "done" && videoUrl && (
+          <div>
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              playsInline
+              className="w-full rounded-lg border border-border"
+            />
+            <div className="mt-4 flex gap-2">
+              <a
+                href={videoUrl}
+                download
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90"
+              >
+                <Download className="h-4 w-4" /> Download MP4
+              </a>
+              <button
+                onClick={() => {
+                  setStatus("idle");
+                  setVideoId(null);
+                  setVideoUrl(null);
+                  setProgress(0);
+                }}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium hover:bg-muted"
+              >
+                <RefreshCw className="h-4 w-4" /> New
+              </button>
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Video saved to your <Link href="/video" className="underline">Video library</Link>.
+              On the free tier, download now — files expire on server restart.
+            </p>
+          </div>
+        )}
+
+        {status === "error" && (
+          <div className="py-4 text-center">
+            <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" />
+            <h3 className="mt-3 text-base font-semibold">Video failed</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+            <button
+              onClick={() => {
+                setStatus("idle");
+                setError(null);
+              }}
+              className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sales Copy Modal ───
+
 function SalesCopyModal({ link, onClose }: { link: TrackingLink; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -432,12 +632,13 @@ function SalesCopyModal({ link, onClose }: { link: TrackingLink; onClose: () => 
   useEffect(() => {
     (async () => {
       setLoading(true);
+      setError(null);
       try {
         const res = await fetch(`/api/money-engine/tracking-links/${link.id}/sales-copy`, {
           method: "POST",
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed");
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
         setCopy({ lemmy: data.lemmy, answer: data.answer, cloakedUrl: data.cloakedUrl });
       } catch (e: any) {
         setError(e.message);
@@ -477,15 +678,13 @@ function SalesCopyModal({ link, onClose }: { link: TrackingLink; onClose: () => 
         {loading && (
           <div className="py-12 text-center">
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-            <p className="mt-3 text-sm text-muted-foreground">
-              Generating Lemmy + Answer content…
-            </p>
+            <p className="mt-3 text-sm text-muted-foreground">Generating sales copy…</p>
           </div>
         )}
 
         {error && (
           <div className="rounded-lg bg-rose-500/10 p-3 text-sm text-rose-600 dark:text-rose-400">
-            {error}
+            <strong>Generation failed:</strong> {error}
           </div>
         )}
 
@@ -528,10 +727,8 @@ function SalesCopyModal({ link, onClose }: { link: TrackingLink; onClose: () => 
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Copy and paste manually into your Lemmy instance and Apache Answer instance.
-              Auto-posting will be enabled when you connect those platforms. The URL included
-              is your cloaked <code className="rounded bg-muted px-1">/go/</code> link — never
-              the raw affiliate URL.
+              Copy and paste manually into Lemmy and Apache Answer. The URL included is your
+              cloaked <code className="rounded bg-muted px-1">/go/</code> link.
             </p>
           </div>
         )}
@@ -539,6 +736,151 @@ function SalesCopyModal({ link, onClose }: { link: TrackingLink; onClose: () => 
     </div>
   );
 }
+
+// ─── Snippets Modal ───
+
+function SnippetsModal({ link, onClose }: { link: TrackingLink; onClose: () => void }) {
+  const [posting, setPosting] = useState<string | null>(null);
+  const [postResult, setPostResult] = useState<any>(null);
+
+  let snippets: any = null;
+  if (link.generatedSnippets) {
+    try {
+      snippets = JSON.parse(link.generatedSnippets);
+    } catch {}
+  }
+
+  async function post(platformKey: string, caption: string) {
+    setPosting(platformKey);
+    setPostResult(null);
+    try {
+      const res = await fetch("/api/social/post-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offerId: null,
+          caption,
+          platforms: ["telegram", "bluesky", "mastodon"],
+          useGeneratedImage: false,
+          customImageUrl: `/api/money-engine/tracking-links/${link.id}/image`,
+        }),
+      });
+      const data = await res.json();
+      setPostResult(data);
+    } catch (e: any) {
+      setPostResult({ error: e.message });
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  if (!snippets) {
+    return (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+        <div className="w-full max-w-md rounded-2xl bg-card p-6 text-center">
+          <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
+          <p className="mt-3 text-sm">No snippets yet. Edit the link → Re-scrape to generate them.</p>
+          <button
+            onClick={onClose}
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const modules = [
+    { key: "tiktok", label: "TikTok", text: snippets.tiktok?.caption ?? "" },
+    { key: "facebook", label: "Facebook", text: snippets.facebook?.caption ?? "" },
+    { key: "x", label: "X (Twitter)", text: (snippets.x?.tweets ?? []).join("\n\n") },
+    {
+      key: "youtube",
+      label: "YouTube",
+      text: `${snippets.youtube?.title ?? ""}\n\n${snippets.youtube?.description ?? ""}`,
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5"
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="text-base font-semibold">Marketing content</div>
+            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+              {link.productName}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {link.hasImage && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={`/api/money-engine/tracking-links/${link.id}/image`}
+            alt=""
+            className="mb-4 w-full rounded-lg border border-border/60"
+          />
+        )}
+
+        <div className="space-y-3">
+          {modules.map((m) => (
+            <div key={m.key} className="rounded-lg border border-border/60 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase text-primary">{m.label}</span>
+                <button
+                  onClick={() => post(m.key, m.text)}
+                  disabled={posting === m.key}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
+                >
+                  {posting === m.key ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Share2 className="h-3 w-3" />
+                  )}
+                  Post
+                </button>
+              </div>
+              <div className="mt-2 whitespace-pre-wrap text-sm">{m.text}</div>
+            </div>
+          ))}
+        </div>
+
+        {postResult && (
+          <div className="mt-4 rounded-lg bg-muted/30 p-3 text-xs">
+            {postResult.error ? (
+              <div className="text-rose-600">{postResult.error}</div>
+            ) : (
+              <div className="space-y-1">
+                {(postResult.results ?? []).map((r: any, i: number) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="font-medium capitalize">{r.platform}:</span>
+                    {r.result?.ok ? (
+                      <span className="text-emerald-600">✓ posted</span>
+                    ) : (
+                      <span className="text-rose-600">✗ {r.result?.error}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Add Link Modal ───
 
 function AddLinkModal({
   onClose,
@@ -660,11 +1002,8 @@ function AddLinkModal({
                   value={trackingUrl}
                   onChange={(e) => setTrackingUrl(e.target.value)}
                   placeholder="https://jumia-ng.sjv.io/c/123456/789/12345"
-                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Never shown publicly — used only as the /go/ redirect target
-                </p>
               </div>
 
               <div>
@@ -675,29 +1014,19 @@ function AddLinkModal({
                   value={merchantUrl}
                   onChange={(e) => setMerchantUrl(e.target.value)}
                   placeholder="https://jumia.com.ng/tecno-spark-20"
-                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none"
+                  className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
                 />
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  Where the product image and details come from
-                </p>
               </div>
 
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
                   Product image (optional)
                 </label>
-                <div className="mt-1 flex gap-2">
-                  <label className="inline-flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border text-xs font-medium hover:bg-muted">
-                    <Upload className="h-3.5 w-3.5" />
-                    {manualImage ? "Change image" : "Upload if scraping fails"}
-                    <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
-                  </label>
-                  {manualImage && (
-                    <div className="grid h-10 w-10 place-items-center rounded-lg bg-emerald-500/10 text-emerald-600">
-                      <Check className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
+                <label className="mt-1 flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border text-xs font-medium hover:bg-muted">
+                  <Upload className="h-3.5 w-3.5" />
+                  {manualImage ? "Change image" : "Upload if scraping fails"}
+                  <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
+                </label>
               </div>
 
               {manualImage && (
@@ -730,14 +1059,14 @@ function AddLinkModal({
           <div className="py-6 text-center">
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
             <h3 className="mt-4 text-base font-semibold">{progressMsg}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">This takes 15–30 seconds</p>
+            <p className="mt-2 text-sm text-muted-foreground">15–30 seconds</p>
           </div>
         )}
 
         {stage === "error" && (
           <div className="py-4 text-center">
             <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" />
-            <h3 className="mt-3 text-base font-semibold">Something went wrong</h3>
+            <h3 className="mt-3 text-base font-semibold">Failed</h3>
             <p className="mt-2 text-sm text-muted-foreground">{error}</p>
             <button
               onClick={() => {
@@ -754,6 +1083,8 @@ function AddLinkModal({
     </div>
   );
 }
+
+// ─── Edit Link Modal ───
 
 function EditLinkModal({
   link,
@@ -843,7 +1174,7 @@ function EditLinkModal({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      setSuccessMsg("Image uploaded + marketing card regenerated");
+      setSuccessMsg("Uploaded + regenerated");
       setTimeout(() => onSuccess(), 800);
     } catch (e: any) {
       setError(e.message);
@@ -894,9 +1225,7 @@ function EditLinkModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Affiliate tracking URL
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Affiliate URL</label>
             <input
               value={trackingUrl}
               onChange={(e) => setTrackingUrl(e.target.value)}
@@ -905,9 +1234,7 @@ function EditLinkModal({
           </div>
 
           <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              Product page URL
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">Product page URL</label>
             <input
               value={merchantUrl}
               onChange={(e) => setMerchantUrl(e.target.value)}
@@ -969,11 +1296,7 @@ function EditLinkModal({
                 ) : (
                   <Upload className="h-3.5 w-3.5" />
                 )}
-                {uploading
-                  ? "Uploading…"
-                  : link.hasImage
-                  ? "Replace image"
-                  : "Upload image"}
+                {uploading ? "Uploading…" : link.hasImage ? "Replace image" : "Upload image"}
                 <input
                   type="file"
                   accept="image/*"
@@ -1030,148 +1353,7 @@ function EditLinkModal({
   );
 }
 
-function SnippetsModal({ link, onClose }: { link: TrackingLink; onClose: () => void }) {
-  const [posting, setPosting] = useState<string | null>(null);
-  const [postResult, setPostResult] = useState<any>(null);
-
-  let snippets: any = null;
-  if (link.generatedSnippets) {
-    try {
-      snippets = JSON.parse(link.generatedSnippets);
-    } catch {}
-  }
-
-  async function post(platformKey: string, caption: string) {
-    setPosting(platformKey);
-    setPostResult(null);
-    try {
-      const res = await fetch("/api/social/post-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          offerId: null,
-          caption,
-          platforms: ["telegram", "bluesky", "mastodon"],
-          useGeneratedImage: false,
-          customImageUrl: `/api/money-engine/tracking-links/${link.id}/image`,
-        }),
-      });
-      const data = await res.json();
-      setPostResult(data);
-    } catch (e: any) {
-      setPostResult({ error: e.message });
-    } finally {
-      setPosting(null);
-    }
-  }
-
-  if (!snippets) {
-    return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-        <div className="w-full max-w-md rounded-2xl bg-card p-6 text-center">
-          <AlertTriangle className="mx-auto h-8 w-8 text-amber-500" />
-          <p className="mt-3 text-sm">
-            No snippets generated yet. Edit the link and click Re-scrape.
-          </p>
-          <button
-            onClick={onClose}
-            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const modules = [
-    { key: "tiktok", label: "TikTok", text: snippets.tiktok?.caption ?? "" },
-    { key: "facebook", label: "Facebook", text: snippets.facebook?.caption ?? "" },
-    { key: "x", label: "X (Twitter)", text: (snippets.x?.tweets ?? []).join("\n\n") },
-    {
-      key: "youtube",
-      label: "YouTube",
-      text: `${snippets.youtube?.title ?? ""}\n\n${snippets.youtube?.description ?? ""}`,
-    },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-5"
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <div className="text-base font-semibold">Marketing content</div>
-            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-              {link.productName}
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="grid h-8 w-8 place-items-center rounded-lg hover:bg-muted"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {link.hasImage && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={`/api/money-engine/tracking-links/${link.id}/image`}
-            alt=""
-            className="mb-4 w-full rounded-lg border border-border/60"
-          />
-        )}
-
-        <div className="space-y-3">
-          {modules.map((m) => (
-            <div key={m.key} className="rounded-lg border border-border/60 p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase text-primary">{m.label}</span>
-                <button
-                  onClick={() => post(m.key, m.text)}
-                  disabled={posting === m.key}
-                  className="inline-flex h-7 items-center gap-1 rounded-md bg-primary/10 px-2 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
-                >
-                  {posting === m.key ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Share2 className="h-3 w-3" />
-                  )}
-                  Post
-                </button>
-              </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm">{m.text}</div>
-            </div>
-          ))}
-        </div>
-
-        {postResult && (
-          <div className="mt-4 rounded-lg bg-muted/30 p-3 text-xs">
-            {postResult.error ? (
-              <div className="text-rose-600">{postResult.error}</div>
-            ) : (
-              <div className="space-y-1">
-                {(postResult.results ?? []).map((r: any, i: number) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <span className="font-medium capitalize">{r.platform}:</span>
-                    {r.result?.ok ? (
-                      <span className="text-emerald-600">✓ posted</span>
-                    ) : (
-                      <span className="text-rose-600">✗ {r.result?.error}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+// ─── Upgrade Gate ───
 
 function UpgradeGate() {
   return (
@@ -1184,9 +1366,9 @@ function UpgradeGate() {
           Auto Money Engine — Premium
         </h1>
         <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
-          Add your Impact and WarriorPlus affiliate links. We generate branded images,
-          marketing copy for 4 platforms, cloaked /go/ redirects that protect you from
-          social media bans, and a full Q&A Content Engine for engagement.
+          Add your Impact and WarriorPlus affiliate links. We generate branded images, videos,
+          marketing copy for 4 platforms, cloaked /go/ redirects that protect you from social
+          media bans, and a full Q&A Content Engine for engagement.
         </p>
         <Link
           href="/billing"
