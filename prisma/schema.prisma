@@ -76,6 +76,9 @@ model User {
   lemmyAccount      UserLemmyAccount?
   answerAccount     UserAnswerAccount?
   autoMoneyPostLogs AutoMoneyPostLog[]
+
+  // Auto-Pilot
+  autopilotSettings AutoPilotSettings?
 }
 
 model Account {
@@ -471,7 +474,7 @@ model LinkToVideoJob {
 }
 
 // ═══════════════════════════════════════════════════════════
-// SALES COPY (long-form for Lemmy/Answer catalog offers)
+// SALES COPY (long-form for Lemmy/Answer)
 // ═══════════════════════════════════════════════════════════
 
 model MoneyEngineSalesCopy {
@@ -631,6 +634,10 @@ model UserTrackingLink {
   clicks    Int                     @default(0)
   clicksRel UserTrackingLinkClick[]
 
+  // Auto-pilot tracking
+  lastAutoPostedAt DateTime?
+  autoPostCount    Int       @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -730,7 +737,7 @@ model UserAnswerAccount {
 }
 
 // ═══════════════════════════════════════════════════════════
-// AUTO MONEY POST LOG — every published Lemmy/Answer post
+// AUTO MONEY POST LOG — every published post
 // ═══════════════════════════════════════════════════════════
 
 model AutoMoneyPostLog {
@@ -752,4 +759,28 @@ model AutoMoneyPostLog {
   @@index([userId, platform])
   @@index([userId, postedAt])
   @@map("auto_money_post_logs")
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTO-PILOT SETTINGS — 3x daily posting schedule
+// ═══════════════════════════════════════════════════════════
+
+model AutoPilotSettings {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  isEnabled      Boolean   @default(false)
+  postHours      String    @default("[8,14,20]")
+  platforms      String    @default("[\"lemmy\",\"threads\",\"pinterest\"]")
+  lemmyCommunity String?
+  pinterestBoard String?
+  lastRunAt      DateTime?
+  lastRunStatus  String?
+  lastRunError   String?   @db.Text
+  totalPostsMade Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("autopilot_settings")
 }
